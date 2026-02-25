@@ -66,16 +66,16 @@ export class Fluid {
                         const sy_down   = this.solid_mask[this.idx(i, j-1)]; // cells are
                         const sy_up     = this.solid_mask[this.idx(i, j+1)]; // solid or fluid
                         
-                        const s_coeff = sx_left + sx_right + sy_down + sy_up;
+                        const s_coeff = sx_left + sx_right + sy_down + sy_up; // fluid neighbours (out of 4)
                         if (s_coeff === 0) continue; // skip if all neighbors are solid
 
-                        let p = (-div / s_coeff) * over_relaxation * this.density * this.h / dt;
-                        this.pressure[this.idx(i, j)] += p;
+                        let p = (-div / s_coeff) * over_relaxation; // average pressure contrib from neighbour cells + SOR
+                        this.pressure[this.idx(i, j)] += p * this.density * this.h / dt; // convert to pressure units & accumulate over iters
 
-                        if (sx_left !== 0) this.u[this.idx(i, j)] -= p;
-                        if (sx_right !== 0) this.u[this.idx(i+1, j)] += p; // apply pressure gradient to horizontal velocity
-                        if (sy_down !== 0) this.v[this.idx(i, j)] -= p;
-                        if (sy_up !== 0) this.v[this.idx(i, j+1)] += p; // apply pressure gradient to vertical velocity
+                        if (sx_left !== 0) this.u[this.idx(i, j)] -= p;     // velocity
+                        if (sx_right !== 0) this.u[this.idx(i+1, j)] += p;  // correction
+                        if (sy_down !== 0) this.v[this.idx(i, j)] -= p;     // from
+                        if (sy_up !== 0) this.v[this.idx(i, j+1)] += p;     // pressure gradient
                     }
                 }
             }
