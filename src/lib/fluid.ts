@@ -27,7 +27,7 @@ export function initFluid(density: number, nx: number, ny: number, h: number): F
         N: N, // total cells
         u: new Float32Array(N), // horizontal velocity
         v: new Float32Array(N), // vertical velocity
-        pressure: new Float32Array(N), // pressure field
+        pressure: new Float32Array(N),
         solid_mask: new Float32Array(N), // 0 for solid, 1 for fluid
         smoke_density: new Float32Array(N).fill(1) // clear fluid
     };
@@ -108,9 +108,9 @@ export function arbitraryPosnParameter(fluid: Fluid, x: number, y: number, param
             dx = 0.5 * fluid.h; // v is staggered in horizontal face
             p = fluid.v; break;
         default:
+            p = fluid.smoke_density;
             dx = 0.5 * fluid.h; // center
             dy = 0.5 * fluid.h; // of cell
-            p = fluid.smoke_density; break;
     }
 
     const x0 = Math.floor((x - dx) / fluid.h); // integer index of grid node to the left of x
@@ -132,6 +132,7 @@ export function arbitraryPosnParameter(fluid: Fluid, x: number, y: number, param
             p[idx(fluid, x1, y1)] * frac_x_from_left * frac_y_from_left;    // top right corner weighted by bottom left quad area
 }
 
+// calculate velocities at edge centers
 export function averageVelocity(fluid: Fluid, i: number, j: number, direction: String): number {
     if (direction === "u") {
         return 0.25 * (fluid.u[idx(fluid, i, j)] + fluid.u[idx(fluid, i+1, j)] +     // value of u where normally
@@ -140,4 +141,53 @@ export function averageVelocity(fluid: Fluid, i: number, j: number, direction: S
         return 0.25 * (fluid.v[idx(fluid, i-1, j+1)] + fluid.v[idx(fluid, i, j+1)] + // value of v where normally
                          fluid.v[idx(fluid, i-1, j)] + fluid.v[idx(fluid, i, j)])    // u is defined (vertical face)
     }
+}
+
+// advection (todo: review code)
+export function advectVelocity(fluid: Fluid, dt: number) {
+    let newU = new Float32Array(fluid.N);
+    let newV = new Float32Array(fluid.N);
+
+    for (let i = 1; i < fluid.nx - 1; i++) {
+        for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
+            
+            if (fluid.solid_mask[idx(fluid, i, j)] !== 0 && fluid.solid_mask[idx(fluid, i-1, j)] !== 0) { // skip if cell b'ary left and right is solid
+                const x = i * fluid.h;
+                const y = (j + 0.5) * fluid.h; // todo: minus?
+                const u_vel = fluid.u[idx(fluid, i, j)];
+                const v_vel = averageVelocity(fluid, i, j, "v");
+                newU[idx(fluid, i, j)] = arbitraryPosnParameter(fluid, x - u_vel * dt, y - v_vel * dt, "u"); // backtrace u array
+            }
+            
+            if (fluid.solid_mask[idx(fluid, i, j)] !== 0 && fluid.solid_mask[idx(fluid, i, j-1)] !== 0) { // skip if cell b'ary above and below is solid
+                const x = (i + 0.5) * fluid.h; // todo: minus?
+                const y = j * fluid.h;
+                const u_vel = averageVelocity(fluid, i, j, "u");
+                const v_vel = fluid.v[idx(fluid, i, j)];
+                newV[idx(fluid, i, j)] = arbitraryPosnParameter(fluid, x - u_vel * dt, y - v_vel * dt, "v"); // backtrace v array
+            }
+        }
+    }
+
+    fluid.u = newU;
+    fluid.v = newV;
+}
+
+export function advectSmokeDensity(fluid: Fluid, dt: number) {
+    let newDensity = new Float32Array(fluid.N);
+
+    for (let i = 1; i < fluid.nx - 1; i++) {
+        for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
+            
+            if (fluid.solid_mask[idx(fluid, i, j)] !== 0) { // skip if cell is solid
+                const u = (fluid.u[idx(fluid, i, j)] + fluid.u[idx(fluid, i+1, j)]) * 0.5; // average u velocity at cell center
+                const v = (fluid.v[idx(fluid, i, j)] + fluid.v[idx(fluid, i, j+1)]) * 0.5; // average v velocity at cell center
+                newDensity[idx(fluid, i, j)] = arbitraryPosnParameter(
+                    fluid, (i + 0.5) * fluid.h - u * dt, (j + 0.5) * fluid.h - v * dt, "smoke_density"
+                ); // backtrace from cell center
+            }
+        }
+    }
+
+    fluid.smoke_density = newDensity;
 }
