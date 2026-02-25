@@ -1,7 +1,9 @@
-export class Fluid {
+// FDM + Chorin's Projection
+// MAC staggered grid
 
-    // Chorin's Projection Method
-    // MAC staggered grid
+// todo: refactor monolithic code into separate files
+
+export class Fluid {
 
     density: number;
     nx: number;
@@ -16,10 +18,10 @@ export class Fluid {
     smoke_density: Float32Array;
 
     constructor(density: number, nx: number, ny: number, h: number) {
-        this.density = density;
+        this.density = density; // assuming constant density throughout
         this.nx = nx + 2; // adding buffer cells
         this.ny = ny + 2; // for boundary handling
-        this.h = h;
+        this.h = h; // cell size
 
         this.N = nx * ny; // total cells
 
@@ -59,10 +61,10 @@ export class Fluid {
                         
                         div * this.density / dt; // convert to pressure units
 
-                        const sx_left = this.solid_mask[this.idx(i-1, j)];
-                        const sx_right = this.solid_mask[this.idx(i+1, j)];
-                        const sy_down = this.solid_mask[this.idx(i, j-1)];
-                        const sy_up = this.solid_mask[this.idx(i, j+1)];
+                        const sx_left   = this.solid_mask[this.idx(i-1, j)]; // check if
+                        const sx_right  = this.solid_mask[this.idx(i+1, j)]; // neighbouring
+                        const sy_down   = this.solid_mask[this.idx(i, j-1)]; // cells are
+                        const sy_up     = this.solid_mask[this.idx(i, j+1)]; // solid or fluid
                         
                         const s_coeff = sx_left + sx_right + sy_down + sy_up;
                         if (s_coeff === 0) continue; // skip if all neighbors are solid
@@ -90,5 +92,43 @@ export class Fluid {
             this.v[this.idx(0, j)] = this.v[this.idx(1, j)]; // left b'ary
             this.v[this.idx(this.nx - 1, j)] = this.v[this.idx(this.nx - 2, j)]; // right b'ary
         }
+    }
+
+    // parameter value at arbitrary position
+    arbitraryPosnParameter(x: number, y: number, param: String) {
+        x = Math.max(this.h, Math.min(x, (this.nx - 2) * this.h)); // clamp to
+        y = Math.max(this.h, Math.min(y, (this.ny - 2) * this.h)); // valid grid range
+
+        let dx = 0, dy = 0, p;
+        switch (param) {
+            case "u":
+                dy = 0.5 * this.h; // u is staggered in vertical face
+                p = this.u; break;
+            case "v":
+                dx = 0.5 * this.h; // v is staggered in horizontal face
+                p = this.v; break;
+            default:
+                dx = 0.5 * this.h; // center
+                dy = 0.5 * this.h; // of cell
+                p = this.smoke_density; break;
+        }
+
+        const x0 = Math.floor((x - dx) / this.h); // integer index of grid node to the left of x
+        const y0 = Math.floor((y - dy) / this.h); // integer index of grid node below y
+        
+        const frac_x_from_left = (x - dx) / this.h - x0; // fractional distance of x from left grid node
+        const frac_y_from_left = (y - dy) / this.h - y0; // fractional distance of y from bottom grid node
+        
+        const frac_x_from_right = 1 - frac_x_from_left; // fractional distance of x from right grid node
+        const frac_y_from_right = 1 - frac_y_from_left; // fractional distance of y from top grid node
+        
+        const x1 = x0 + 1; // integer index of grid node to the right of x
+        const y1 = y0 + 1; // integer index of grid node above y
+
+        // bilinear interpolation
+        return p[this.idx(x0, y0)] * frac_x_from_right * frac_y_from_right + // bottom left corner weighted by top right quad area
+               p[this.idx(x1, y0)] * frac_x_from_left * frac_y_from_right +  // bottom right corner weighted by top left quad area
+               p[this.idx(x0, y1)] * frac_x_from_right * frac_y_from_left +  // top left corner weighted by bottom right quad area
+               p[this.idx(x1, y1)] * frac_x_from_left * frac_y_from_left;    // top right corner weighted by bottom left quad area
     }
 }
