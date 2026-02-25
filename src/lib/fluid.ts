@@ -95,7 +95,7 @@ export function applyBoundaryConditions(fluid: Fluid) {
 }
 
 // parameter value at arbitrary position
-export function arbitraryPosnParameter(fluid: Fluid, x: number, y: number, param: String) {
+export function arbitraryPosnParameter(fluid: Fluid, x: number, y: number, param: String): number {
     x = Math.max(fluid.h, Math.min(x, (fluid.nx - 2) * fluid.h)); // clamp to
     y = Math.max(fluid.h, Math.min(y, (fluid.ny - 2) * fluid.h)); // valid grid range
 
@@ -130,4 +130,14 @@ export function arbitraryPosnParameter(fluid: Fluid, x: number, y: number, param
             p[idx(fluid, x1, y0)] * frac_x_from_left * frac_y_from_right +  // bottom right corner weighted by top left quad area
             p[idx(fluid, x0, y1)] * frac_x_from_right * frac_y_from_left +  // top left corner weighted by bottom right quad area
             p[idx(fluid, x1, y1)] * frac_x_from_left * frac_y_from_left;    // top right corner weighted by bottom left quad area
+}
+
+export function averageVelocity(fluid: Fluid, i: number, j: number, direction: String): number {
+    if (direction === "u") {
+        return 0.25 * (fluid.u[idx(fluid, i, j)] + fluid.u[idx(fluid, i+1, j)] +     // value of u where normally
+                     fluid.u[idx(fluid, i, j-1)] + fluid.u[idx(fluid, i+1, j-1)])    // v is defined (horizontal face)
+    } else {
+        return 0.25 * (fluid.v[idx(fluid, i-1, j+1)] + fluid.v[idx(fluid, i, j+1)] + // value of v where normally
+                         fluid.v[idx(fluid, i-1, j)] + fluid.v[idx(fluid, i, j)])    // u is defined (vertical face)
+    }
 }
