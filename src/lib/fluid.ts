@@ -1,5 +1,5 @@
-// FDM + Chorin's Projection
-// MAC staggered grid
+// Macroscopic eulerian FDM, Chorin's Projection Method, MAC staggered grid
+// incompressible, inviscid, constant density fluid, neumann BC
 
 // todo: refactor monolithic code into separate files
 
@@ -14,7 +14,7 @@ export interface Fluid {
     v: Float32Array;
     pressure: Float32Array;
     solid_mask: Float32Array;
-    smoke_density: Float32Array;
+    fluid_density: Float32Array;
 }
 
 export function initFluid(density: number, nx: number, ny: number, h: number): Fluid {
@@ -28,8 +28,8 @@ export function initFluid(density: number, nx: number, ny: number, h: number): F
         u: new Float32Array(N), // horizontal velocity
         v: new Float32Array(N), // vertical velocity
         pressure: new Float32Array(N),
-        solid_mask: new Float32Array(N), // 0 for solid, 1 for fluid
-        smoke_density: new Float32Array(N).fill(1) // clear fluid
+        solid_mask: new Float32Array(N).fill(1), // 0 for solid, 1 for fluid
+        fluid_density: new Float32Array(N).fill(1) // clear fluid
     };
     return fluid;
 }
@@ -38,8 +38,10 @@ export function idx(fluid: Fluid, i: number, j: number): number {
     return i * fluid.ny + j;
 }
 
-// Euler ODE approximation
+// Euler ODE approximation (y_1 = y_0 + f(y_0) * (t_1 - t_0))
 export function integrateGravity(fluid: Fluid, g: number, dt: number) {
+    // todo: add other external forces
+
     for (let i = 1; i < fluid.nx - 1; i++) {
         for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
             if (fluid.solid_mask[idx(fluid, i, j)] !== 0 && fluid.solid_mask[idx(fluid, i, j-1)]) { // skip if cell b'ary above and below is solid
@@ -108,7 +110,7 @@ export function arbitraryPosnParameter(fluid: Fluid, x: number, y: number, param
             dx = 0.5 * fluid.h; // v is staggered in horizontal face
             p = fluid.v; break;
         default:
-            p = fluid.smoke_density;
+            p = fluid.fluid_density;
             dx = 0.5 * fluid.h; // center
             dy = 0.5 * fluid.h; // of cell
     }
@@ -144,9 +146,10 @@ export function averageVelocity(fluid: Fluid, i: number, j: number, direction: S
 }
 
 // advection (todo: review code)
-export function advectVelocity(fluid: Fluid, dt: number) {
-    let newU = new Float32Array(fluid.N);
-    let newV = new Float32Array(fluid.N);
+export function advect(fluid: Fluid, dt: number) {
+    let newU = new Float32Array(fluid.u);
+    let newV = new Float32Array(fluid.v);
+    let newDensity = new Float32Array(fluid.fluid_density);
 
     for (let i = 1; i < fluid.nx - 1; i++) {
         for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
@@ -166,28 +169,27 @@ export function advectVelocity(fluid: Fluid, dt: number) {
                 const v_vel = fluid.v[idx(fluid, i, j)];
                 newV[idx(fluid, i, j)] = arbitraryPosnParameter(fluid, x - u_vel * dt, y - v_vel * dt, "v"); // backtrace v array
             }
-        }
-    }
 
-    fluid.u = newU;
-    fluid.v = newV;
-}
-
-export function advectSmokeDensity(fluid: Fluid, dt: number) {
-    let newDensity = new Float32Array(fluid.N);
-
-    for (let i = 1; i < fluid.nx - 1; i++) {
-        for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
-            
             if (fluid.solid_mask[idx(fluid, i, j)] !== 0) { // skip if cell is solid
                 const u = (fluid.u[idx(fluid, i, j)] + fluid.u[idx(fluid, i+1, j)]) * 0.5; // average u velocity at cell center
                 const v = (fluid.v[idx(fluid, i, j)] + fluid.v[idx(fluid, i, j+1)]) * 0.5; // average v velocity at cell center
                 newDensity[idx(fluid, i, j)] = arbitraryPosnParameter(
-                    fluid, (i + 0.5) * fluid.h - u * dt, (j + 0.5) * fluid.h - v * dt, "smoke_density"
+                    fluid, (i + 0.5) * fluid.h - u * dt, (j + 0.5) * fluid.h - v * dt, "fluid_density"
                 ); // backtrace from cell center
             }
         }
     }
 
-    fluid.smoke_density = newDensity;
+    fluid.u = newU;
+    fluid.v = newV;
+    fluid.fluid_density = newDensity;
+}
+
+// simulate step
+export function step(fluid: Fluid, g: number, dt: number, pressure_iters: number, over_relaxation: number) {
+    integrateGravity(fluid, g, dt);
+    fluid.pressure.fill(0); // reset pressure field or contributions accumulate in solvePressure over iters
+    solvePressure(fluid, pressure_iters, dt, over_relaxation);
+    applyBoundaryConditions(fluid); // todo: change BC
+    advect(fluid, dt);
 }
