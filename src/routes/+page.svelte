@@ -1,7 +1,7 @@
 <!-- flow around infinitely long cylinder, with characteristic von karman vortex trails in wake region -->
 
 <script lang="ts">
-    import * as fluid from "$lib/fluid";
+    import * as fluid from "$lib/fluid_eul";
     import { onMount } from "svelte";
 
     let canvas: HTMLCanvasElement;
