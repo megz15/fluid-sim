@@ -51,7 +51,41 @@ export function integrateGravity(fluid: Fluid, g: number, dt: number) {
     }
 }
 
-// Incompressibility divergence-free condition
+// Viscous diffusion (u += \nu dt \del^2u)
+export function diffuse(fluid: Fluid, nu: number, dt: number, iters: number) {
+    if (nu === 0) return;   // skip if inviscid
+
+    const coeff = nu * dt / (fluid.h * fluid.h);
+
+    const u0 = new Float32Array(fluid.u);
+    const v0 = new Float32Array(fluid.v);
+
+    for (let iter = 0; iter < iters; iter++) {
+        for (let i = 1; i < fluid.nx - 1; i++) {
+            for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
+                
+                // Diffuse horizontal velocity (u)
+                if (fluid.solid_mask[idx(fluid, i, j)] !== 0 && fluid.solid_mask[idx(fluid, i - 1, j)] !== 0) {
+                    fluid.u[idx(fluid, i, j)] = (u0[idx(fluid, i, j)] + coeff * (
+                        fluid.u[idx(fluid, i - 1, j)] + fluid.u[idx(fluid, i + 1, j)] +
+                        fluid.u[idx(fluid, i, j - 1)] + fluid.u[idx(fluid, i, j + 1)]
+                    )) / (1 + 4 * coeff);
+                }
+                
+                // Diffuse vertical velocity (v)
+                if (fluid.solid_mask[idx(fluid, i, j)] !== 0 && fluid.solid_mask[idx(fluid, i, j - 1)] !== 0) {
+                    fluid.v[idx(fluid, i, j)] = (v0[idx(fluid, i, j)] + coeff * (
+                        fluid.v[idx(fluid, i - 1, j)] + fluid.v[idx(fluid, i + 1, j)] +
+                        fluid.v[idx(fluid, i, j - 1)] + fluid.v[idx(fluid, i, j + 1)]
+                    )) / (1 + 4 * coeff);
+                }
+            }
+        }
+    }
+
+}
+
+// Incompressibility divergence-free condition (gauss-siedel SOR)
 export function solvePressure(fluid: Fluid, iters: number, dt: number, over_relaxation: number) {
     for (let iter = 0; iter < iters; iter++) {
         for (let i = 1; i < fluid.nx - 1; i++) {
@@ -184,8 +218,9 @@ export function advect(fluid: Fluid, dt: number) {
 }
 
 // simulate step
-export function step(fluid: Fluid, g: number, dt: number, pressure_iters: number, over_relaxation: number) {
+export function step(fluid: Fluid, g: number, dt: number, pressure_iters: number, over_relaxation: number, nu: number, diffuse_iters: number) {
     integrateGravity(fluid, g, dt);
+    if (nu > 0) diffuse(fluid, nu, dt, diffuse_iters);
     fluid.pressure.fill(0); // reset pressure field or contributions accumulate in solvePressure over iters
     solvePressure(fluid, pressure_iters, dt, over_relaxation);
     applyBoundaryConditions(fluid); // todo: change BC

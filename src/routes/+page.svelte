@@ -10,10 +10,13 @@
 
     const density = 1000; // kg/m^3, water
     const gravity = 0; // m/s^2, no gravity for now
+    const nu = 0.0015; // kinematic viscosity
     const nx = 200;
     const ny = 80; // 2.5:1 tunnel
     const h = 0.01;
     const dt = 1/60; // 60 FPS
+    const inlet_velocity = 1.5; // m/s
+    const diffuse_iters = 20; // number of diffusion iterations
     const pressure_iters = 40; // pressure solver iters
     const overrelaxation = 1.9;
 
@@ -52,7 +55,7 @@
                 }
             }
 
-            fluid.step(fluidDomain, gravity, dt, pressure_iters, overrelaxation);
+            fluid.step(fluidDomain, gravity, dt, pressure_iters, overrelaxation, nu, diffuse_iters);
 
             // render on canvas
             for (let i = 0; i < nx; i++) {
@@ -68,9 +71,9 @@
                     } else {
                         const smoke = fluidDomain.fluid_density[fluid_idx];
                         const c = Math.max(0, Math.min(255, Math.floor(255 * smoke)));
-                        canvasPixels.data[pixel_idx] = c;
-                        canvasPixels.data[pixel_idx + 1] = c;
-                        canvasPixels.data[pixel_idx + 2] = c;
+                        canvasPixels.data[pixel_idx] = c+40;
+                        canvasPixels.data[pixel_idx + 1] = c+60;
+                        canvasPixels.data[pixel_idx + 2] = c+100;
                         canvasPixels.data[pixel_idx + 3] = 255; // grey opaque
                     }
                 }
