@@ -15,7 +15,7 @@
     const ny = 80; // 2.5:1 tunnel
     const h = 0.01;
     const dt = 1/60; // 60 FPS
-    const inlet_velocity = 1.5; // m/s
+    const inlet_velocity = 2; // m/s
     const diffuse_iters = 20; // number of diffusion iterations
     const pressure_iters = 40; // pressure solver iters
     const overrelaxation = 1.9;
@@ -30,8 +30,6 @@
 
     function resetSim() {
         if (!canvas) return;
-        const canvas_ctx = canvas.getContext("2d");
-        if (!canvas_ctx) return;
 
         fluid_domain = fluid.initFluid(density, nx, ny, h);
 

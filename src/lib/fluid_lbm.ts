@@ -7,7 +7,7 @@ export interface FluidLBM {
 
     f: Float32Array;
     f_new: Float32Array;
-    fluid_density: Float32Array;
+    rho: Float32Array;
     u: Float32Array;
     v: Float32Array;
     solid_mask: Float32Array; // 0 for solid, 1 for fluid
@@ -20,16 +20,13 @@ const w = [4/9, 1/9, 1/9, 1/9, 1/9, 1/36, 1/36, 1/36, 1/36];
 const opposite = [0, 3, 4, 1, 2, 7, 8, 5, 6];
 
 export function initLBM(nx: number, ny: number, tau: number): FluidLBM {
-    const N = (nx+2) * (ny+2); // including buffer cells for boundaries
+    const N = nx * ny;
     const lbm: FluidLBM = {
-        nx: nx + 2,
-        ny: ny + 2,
-        N,
-        tau,
+        nx, ny, N, tau,
         omega: 1.0 / tau,
         f: new Float32Array(N * 9),
         f_new: new Float32Array(N * 9),
-        fluid_density: new Float32Array(N).fill(1.0),
+        rho: new Float32Array(N).fill(1.0),
         u: new Float32Array(N),
         v: new Float32Array(N),
         solid_mask: new Float32Array(N).fill(1)
@@ -51,7 +48,7 @@ export function idx(lbm: FluidLBM, i: number, j: number): number {
 }
 
 export function step(lbm: FluidLBM, inletVelocity: number) {
-    const { nx, ny, f, f_new, fluid_density, u, v, solid_mask, omega } = lbm;
+    const { nx, ny, f, f_new, rho, u, v, solid_mask, omega } = lbm;
 
     // Collision & Macroscopic Update
     for (let j = 0; j < ny; j++) {
@@ -60,13 +57,13 @@ export function step(lbm: FluidLBM, inletVelocity: number) {
 
             if (solid_mask[n] === 0) continue;
 
-            let local_fluid_density = 0;
+            let local_rho = 0;
             let local_u = 0;
             let local_v = 0;
 
             for (let k = 0; k < 9; k++) {
                 const f_val = f[n * 9 + k];
-                local_fluid_density += f_val;
+                local_rho += f_val;
                 local_u += f_val * cx[k];
                 local_v += f_val * cy[k];
             }
@@ -75,13 +72,13 @@ export function step(lbm: FluidLBM, inletVelocity: number) {
             if (i === 1 && solid_mask[n] !== 0) {
                 local_u = inletVelocity;
                 local_v = 0;
-                local_fluid_density = 1.0;
+                local_rho = 1.0;
             } else {
-                local_u /= local_fluid_density;
-                local_v /= local_fluid_density;
+                local_u /= local_rho;
+                local_v /= local_rho;
             }
 
-            fluid_density[n] = local_fluid_density;
+            rho[n] = local_rho;
             u[n] = local_u;
             v[n] = local_v;
 
@@ -90,7 +87,7 @@ export function step(lbm: FluidLBM, inletVelocity: number) {
             // BGK Collision
             for (let k = 0; k < 9; k++) {
                 const cu = cx[k] * local_u + cy[k] * local_v;
-                const feq = w[k] * local_fluid_density * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u_sq);
+                const feq = w[k] * local_rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u_sq);
                 
                 f[n * 9 + k] += omega * (feq - f[n * 9 + k]);
 
