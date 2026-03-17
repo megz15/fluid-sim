@@ -126,7 +126,7 @@ export function step(lbm: FluidLBM, inletVelocity: number) {
         }
     }
 
-    // 3. Swap buffers
+    // Swap buffers
     lbm.f = f_new;
     lbm.f_new = f;
 }

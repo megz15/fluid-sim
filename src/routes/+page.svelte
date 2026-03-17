@@ -10,7 +10,7 @@
     let method_used: "lbm" | "eul" = "eul";
     const nx = 200;
     const ny = 80; // 2.5:1 tunnel
-    const gravity = 0; // m/s^2, no gravity for now
+    // const gravity = 9.81; // m/s^2
     const overrelaxation = 1.9;
     
     // obstruction
@@ -20,7 +20,6 @@
 
     // eulerian FDM params
     let eul_domain: eul.Fluid;
-    let eul_density = 1000; // kg/m^3, water
     let eul_nu = 0.001; // kinematic viscosity
     let eul_h = 0.01;
     let eul_dt = 1/60; // 60 FPS
@@ -49,9 +48,8 @@
     function resetSim() {
         if (!canvas) return;
 
-        // Initialize the appropriate domain
         if (method_used === "eul") {
-            eul_domain = eul.initFluid(eul_density, nx, ny, eul_h);
+            eul_domain = eul.initFluid(nx, ny, eul_h);
         } else {
             lbm_domain = lbm.initLBM(nx, ny, lbm_tau);
         }
@@ -59,7 +57,6 @@
         const current_domain = method_used === "eul" ? eul_domain : lbm_domain;
         const lib = method_used === "eul" ? eul : lbm;
 
-        // Single loop for obstacle definition
         for (let i = 1; i < nx - 1; i++) {
             for (let j = 1; j < ny - 1; j++) {
                 const dx = i - cx;
@@ -109,7 +106,6 @@
                     const index = lib.idx(active_domain, i, j);
                     current_domain.solid_mask[index] = 0;
                     
-                    // For Eulerian, we explicitly zero out the velocity inside solids
                     if (method_used === "eul") {
                         current_domain.u[index] = 0;
                         current_domain.v[index] = 0;
@@ -131,7 +127,7 @@
                 eul_domain.v[eul.idx(eul_domain, 1, j)] = 0;
             }
             
-            eul.step(eul_domain, gravity, eul_dt, eul_pressure_iters, overrelaxation, eul_nu, eul_diffuse_iters);
+            eul.step(eul_domain, eul_dt, eul_pressure_iters, overrelaxation, eul_nu, eul_diffuse_iters);
             
             drawPixels(canvas_pixels, eul_domain.solid_mask, eul_domain.u, eul_domain.v, eul_inlet_velocity);
         } else {

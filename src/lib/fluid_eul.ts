@@ -4,7 +4,6 @@
 // todo: refactor monolithic code into separate files
 
 export interface Fluid {
-    density: number;
     nx: number;
     ny: number;
     h: number;
@@ -17,10 +16,10 @@ export interface Fluid {
     fluid_density: Float32Array;
 }
 
-export function initFluid(density: number, nx: number, ny: number, h: number): Fluid {
+export function initFluid(nx: number, ny: number, h: number): Fluid {
     const N = (nx + 2) * (ny + 2);
     const fluid: Fluid = {
-        density: density, // assuming constant density throughout
+        // density: density, // assuming constant density throughout
         nx: nx + 2, // adding buffer cells
         ny: ny + 2, // for boundary handling
         h: h, // cell size
@@ -39,17 +38,17 @@ export function idx(fluid: Fluid, i: number, j: number): number {
 }
 
 // Euler ODE approximation (y_1 = y_0 + f(y_0) * (t_1 - t_0))
-export function integrateGravity(fluid: Fluid, g: number, dt: number) {
-    // todo: add other external forces
+// export function integrateGravity(fluid: Fluid, g: number, dt: number) {
+//     // todo: add other external forces
 
-    for (let i = 1; i < fluid.nx - 1; i++) {
-        for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
-            if (fluid.solid_mask[idx(fluid, i, j)] !== 0 && fluid.solid_mask[idx(fluid, i, j-1)]) { // skip if cell b'ary above and below is solid
-                fluid.v[idx(fluid, i, j)] += g * dt; // apply gravity to vertical velocity
-            }
-        }
-    }
-}
+//     for (let i = 1; i < fluid.nx - 1; i++) {
+//         for (let j = 1; j < fluid.ny - 1; j++) { // leave out buffer cells
+//             if (fluid.solid_mask[idx(fluid, i, j)] !== 0 && fluid.solid_mask[idx(fluid, i, j-1)]) { // skip if cell b'ary above and below is solid
+//                 fluid.v[idx(fluid, i, j)] += g * dt; // apply gravity to vertical velocity
+//             }
+//         }
+//     }
+// }
 
 // Viscous diffusion (u += \nu dt \del^2u)
 export function diffuse(fluid: Fluid, nu: number, dt: number, iters: number) {
@@ -104,7 +103,8 @@ export function solvePressure(fluid: Fluid, iters: number, dt: number, over_rela
                     if (s_coeff === 0) continue; // skip if all neighbors are solid
 
                     let p = (-div / s_coeff) * over_relaxation; // average pressure contrib from neighbour cells + SOR
-                    fluid.pressure[idx(fluid, i, j)] += p * fluid.density * fluid.h / dt; // convert to pressure units & accumulate over iters
+                    // fluid.pressure[idx(fluid, i, j)] += p * fluid.density * fluid.h / dt; // convert to pressure units & accumulate over iters
+                    fluid.pressure[idx(fluid, i, j)] += p * fluid.h / dt;
 
                     if (sx_left !== 0) fluid.u[idx(fluid, i, j)] -= p;     // velocity
                     if (sx_right !== 0) fluid.u[idx(fluid, i+1, j)] += p;  // correction
@@ -218,8 +218,8 @@ export function advect(fluid: Fluid, dt: number) {
 }
 
 // simulate step
-export function step(fluid: Fluid, g: number, dt: number, pressure_iters: number, over_relaxation: number, nu: number, diffuse_iters: number) {
-    integrateGravity(fluid, g, dt);
+export function step(fluid: Fluid, dt: number, pressure_iters: number, over_relaxation: number, nu: number, diffuse_iters: number) {
+    // integrateGravity(fluid, g, dt);
     if (nu > 0) diffuse(fluid, nu, dt, diffuse_iters);
     fluid.pressure.fill(0); // reset pressure field or contributions accumulate in solvePressure over iters
     solvePressure(fluid, pressure_iters, dt, over_relaxation);
