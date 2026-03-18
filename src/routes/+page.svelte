@@ -12,7 +12,14 @@
     const nx = 200;
     const ny = 80; // 2.5:1 tunnel
     // const gravity = 9.81; // m/s^2
-    const overrelaxation = 1.9;
+
+    // colours
+    let obstruction_colour = { r: 0, g: 0, b: 0 }; // black
+    let flow_colour = {
+        base: { r: 0, g: 0, b: 200 },
+        variable: { r: 100, g: 255, b: 55 },
+        a: 255
+    };
     
     // obstruction
     let shape: String = "circle";
@@ -27,6 +34,7 @@
     let eul_inlet_velocity = 2; // m/s
     let eul_diffuse_iters = 20; // number of diffusion iterations
     let eul_pressure_iters = 40; // pressure solver iters
+    let overrelaxation = 1.9; // SOR, 1.0 = Gauss-Seidel, <2.0 for convergence speedup
 
     // LBM D2Q9 params
     let lbm_domain: lbm.FluidLBM;
@@ -51,7 +59,7 @@
 
     // reactivity
     $: {
-        method_used, shape, obstacle_size, cx, cy, eul_h, lbm_tau, lbm_nu;
+        method_used, shape, obstacle_size, cx, cy, eul_h, lbm_tau, lbm_nu, eul_diffuse_iters, eul_pressure_iters, lbm_shock_ramp_steps;
         if (canvas) resetSim();
     }
 
@@ -196,9 +204,9 @@
                 const pixel_idx = (j * nx + i) * 4; // R, G, B, A channels
                 
                 if (solid_mask[grid_idx] === 0) {
-                    canvas_pixels.data[pixel_idx] = 0;
-                    canvas_pixels.data[pixel_idx + 1] = 0;
-                    canvas_pixels.data[pixel_idx + 2] = 0;
+                    canvas_pixels.data[pixel_idx] = obstruction_colour.r;
+                    canvas_pixels.data[pixel_idx + 1] = obstruction_colour.g;
+                    canvas_pixels.data[pixel_idx + 2] = obstruction_colour.b;
                     canvas_pixels.data[pixel_idx + 3] = 255; // black opaque
                 } else {
                     // const smoke = fluid_domain.fluid_density[fluid_idx];
@@ -211,10 +219,10 @@
                     // Track max speed for CFL/Mach calculations
                     if (speed > max_speed) max_speed = speed;
 
-                    canvas_pixels.data[pixel_idx] = Math.floor(normalized_speed * 100);
-                    canvas_pixels.data[pixel_idx + 1] = Math.floor(normalized_speed * 255);
-                    canvas_pixels.data[pixel_idx + 2] = Math.floor(200 + normalized_speed * 55);
-                    canvas_pixels.data[pixel_idx + 3] = 255; // opaque
+                    canvas_pixels.data[pixel_idx] = Math.floor(flow_colour.base.r + normalized_speed * flow_colour.variable.r);
+                    canvas_pixels.data[pixel_idx + 1] = Math.floor(flow_colour.base.g + normalized_speed * flow_colour.variable.g);
+                    canvas_pixels.data[pixel_idx + 2] = Math.floor(flow_colour.base.b + normalized_speed * flow_colour.variable.b);
+                    canvas_pixels.data[pixel_idx + 3] = flow_colour.a; // opaque
                 }
             }
         }
@@ -231,72 +239,165 @@
     });
 </script>
 
-<main>
-    <h2>Fluid Dynamics Comparison</h2>
-    
-    <div>
+<main class="p-6 max-w-7xl mx-auto min-h-screen font-sans text-slate-800">
+    <header class="mb-6 border-b border-slate-200 pb-4 flex justify-between items-end">
         <div>
-            <h3>Global Settings</h3>
-            <label>Method: 
-                <select bind:value={method_used}>
-                    <option value="eul">Eulerian FDM</option>
-                    <option value="lbm">Lattice Boltzmann (D2Q9)</option>
-                </select>
-            </label><br>
-            <label>Obstacle Shape: 
-                <select bind:value={shape}>
-                    <option value="circle">Circular</option>
-                    <option value="square">Square</option>
-                    <option value="wedge">Triangular</option>
-                    <option value="diamond">Diamond</option>
-                    <option value="teardrop">Teardrop</option>
-                    <option value="star">Star</option>
-                    <option value="plate">Plate</option>
-                </select>
-            </label><br>
-            <label>Obstacle Size: 
-                <input type="number" bind:value={obstacle_size} min="2" max="30">
-            </label><br>
-            <label>Wall Boundaries: 
-                <select bind:value={wall_BC}>
-                    <option value="free-slip">Free-Slip (Wind Tunnel)</option>
-                    <option value="no-slip">No-Slip (Pipe Flow)</option>
-                </select>
-            </label>
+            <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Computational Fluid Dynamics</h1>
+            <p class="text-slate-500 text-sm">Real-time comparison of Eulerian FDM and Lattice Boltzmann Method</p>
         </div>
+    </header>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-blue-600 mb-4 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-blue-600"></span> Global Config
+            </h3>
+            <div class="space-y-3">
+                <label class="flex justify-between items-center text-sm">
+                    <span class="font-medium">Solver Engine</span>
+                    <select bind:value={method_used} class="border rounded-md px-2 py-1 bg-slate-50 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="eul">Eulerian FDM</option>
+                        <option value="lbm">LBM (D2Q9)</option>
+                    </select>
+                </label>
+                <label class="flex justify-between items-center text-sm">
+                    <span class="font-medium">Cylinder Geometry</span>
+                    <select bind:value={shape} class="border rounded-md px-2 py-1 bg-slate-50 text-sm outline-none">
+                        <option value="circle">Circular</option>
+                        <option value="square">Square</option>
+                        <option value="wedge">Triangular</option>
+                        <option value="diamond">Diamond</option>
+                        <option value="teardrop">Teardrop</option>
+                        <option value="star">Star</option>
+                        <option value="plate">Plate</option>
+                    </select>
+                </label>
+                <label class="flex justify-between items-center text-sm">
+                    <span class="font-medium">Boundary Layer</span>
+                    <select bind:value={wall_BC} class="border rounded-md px-2 py-1 bg-slate-50 text-sm outline-none">
+                        <option value="free-slip">Free-Slip (Wind Tunnel)</option>
+                        <option value="no-slip">No-Slip (Pipe Flow)</option>
+                    </select>
+                </label>
+                <div class="pt-2 border-t border-slate-100 mt-2">
+                    <div class="grid grid-cols-3 gap-3">
+                        <label class="block">
+                            <span class="text-[10px] uppercase font-bold text-slate-400">Obstacle Size</span>
+                            <input type="number" bind:value={obstacle_size} min="2" max="40" class="w-full border rounded px-2 py-1 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="text-[10px] uppercase font-bold text-slate-400">Position X</span>
+                            <input type="number" bind:value={cx} min="10" max={nx-10} class="w-full border rounded px-2 py-1 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="text-[10px] uppercase font-bold text-slate-400">Position Y</span>
+                            <input type="number" bind:value={cy} min="10" max={ny-10} class="w-full border rounded px-2 py-1 text-sm">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-        {#if method_used === 'eul'}
-            <div>
-                <h3>Eulerian Params (Re: {re_eul.toFixed(1)})</h3>
-                <label>Inlet Velocity: <input type="number" step="0.1" bind:value={eul_inlet_velocity}></label><br>
-                <label>Kinematic Visc (&nu;): <input type="number" step="0.001" bind:value={eul_nu}></label><br>
-                <label>Grid Spacing (h): <input type="number" step="0.01" bind:value={eul_h}></label><br>
-                <label>Timestep (dt): <input type="number" step="0.001" bind:value={eul_dt}></label><br>
+        <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+            {#if method_used === 'eul'}
+                <h3 class="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-4 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span> Eulerian (Re: {re_eul.toFixed(0)})
+                </h3>
+                <div class="space-y-2 text-sm">
+                    <label class="flex justify-between items-center">Inlet Velocity <input type="number" step="0.1" bind:value={eul_inlet_velocity} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label>
+                    <label class="flex justify-between items-center">Viscosity (&nu;) <input type="number" step="0.0001" bind:value={eul_nu} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label>
+                    <!-- <label class="flex justify-between items-center">Grid Space (h) <input type="number" step="0.01" bind:value={eul_h} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label> -->
+                    <label class="flex justify-between items-center">Timestep (dt) <input type="number" step="0.001" bind:value={eul_dt} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label>
+                    <label class="flex justify-between items-center">Diffusion Iters <input type="number" bind:value={eul_diffuse_iters} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label>
+                    <label class="flex justify-between items-center">Pressure Iters <input type="number" bind:value={eul_pressure_iters} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label>
+                    <label class="flex justify-between items-center">SOR Overrelaxation <input type="number" step="0.01" min="0" max="5" bind:value={overrelaxation} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label>
+                </div>
+            {:else}
+                <h3 class="text-sm font-bold uppercase tracking-widest text-purple-600 mb-4 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-purple-600"></span> Lattice Boltzmann (Re: {re_lbm.toFixed(0)})
+                </h3>
+                <div class="space-y-2 text-sm">
+                    <label class="flex justify-between items-center">Lattice Velocity <input type="number" step="0.01" bind:value={lbm_inlet_velocity} class="w-20 border rounded px-2 py-1 text-right font-mono"></label>
+                    <label class="flex justify-between items-center">Relaxation (&tau;) <input type="number" step="0.01" min="0" bind:value={lbm_tau} class="w-20 border rounded px-2 py-1 text-right font-mono"></label>
+                    <label class="flex justify-between items-center">Steps/Frame <input type="number" bind:value={lbm_steps_per_frame} class="w-20 border rounded px-2 py-1 text-right font-mono"></label>
+                    <label class="flex justify-between items-center">Shock Ramp <input type="number" step="100" bind:value={lbm_shock_ramp_steps} class="w-20 border rounded px-2 py-1 text-right font-mono"></label>
+                </div>
+            {/if}
+        </section>
+
+        <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-amber-600 mb-4 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-amber-600"></span> Colours
+            </h3>
+            <div class="space-y-4">
+                <div>
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Obstruction RGB</span>
+                    <div class="flex gap-1">
+                        <input type="number" bind:value={obstruction_colour.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1" title="Red">
+                        <input type="number" bind:value={obstruction_colour.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1" title="Green">
+                        <input type="number" bind:value={obstruction_colour.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1" title="Blue">
+                    </div>
+                </div>
+                <div>
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Flow Base RGB</span>
+                    <div class="flex gap-1">
+                        <input type="number" bind:value={flow_colour.base.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1">
+                        <input type="number" bind:value={flow_colour.base.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1">
+                        <input type="number" bind:value={flow_colour.base.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1">
+                    </div>
+                </div>
+                <div>
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Flow Variable & Opacity</span>
+                    <div class="flex gap-1">
+                        <input type="number" bind:value={flow_colour.variable.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1" title="Red Speed Scaling">
+                        <input type="number" bind:value={flow_colour.variable.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1" title="Green Speed Scaling">
+                        <input type="number" bind:value={flow_colour.variable.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1" title="Blue Speed Scaling">
+                        <input type="number" bind:value={flow_colour.a} min="0" max="255" class="w-full border rounded px-1 text-center bg-white text-xs py-1 font-bold" title="Alpha (Opacity)">
+                    </div>
+                </div>
             </div>
-        {:else}
-            <div>
-                <h3>LBM Params (Re: {re_lbm.toFixed(1)})</h3>
-                <label>Inlet Velocity (lattice): <input type="number" step="0.01" bind:value={lbm_inlet_velocity}></label><br>
-                <label>Relaxation Time (&tau;): <input type="number" step="0.01" min="0.51" bind:value={lbm_tau}></label><br>
-                <label>Steps per Frame: <input type="number" step="1" bind:value={lbm_steps_per_frame}></label>
-            </div>
-        {/if}
+        </section>
     </div>
 
-    <canvas bind:this={canvas}
-        width={nx} height={ny}
-        class="w-200 h-80 bg-white border-2"
-        style="image-rendering: pixelated;"
-    ></canvas>
+    <div class="relative bg-slate-900 p-2 rounded-2xl shadow-2xl overflow-hidden border-8 border-slate-800">
+        <canvas bind:this={canvas}
+            width={nx} height={ny}
+            class="w-full h-auto rounded-lg cursor-crosshair"
+            style="image-rendering: pixelated;"
+        ></canvas>
+        <div class="absolute top-4 right-4 bg-slate-900/80 backdrop-blur text-white px-3 py-1 rounded text-[10px] font-mono uppercase tracking-widest border border-white/10">
+            Method used: {method_used.toUpperCase()}
+        </div>
+        <div class="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur text-white px-3 py-1 rounded text-[10px] font-mono uppercase tracking-widest border border-white/10">
+            {nx} x {ny} Lattice
+        </div>
+    </div>
 
-    <div class="metrics">
-        <h3>Live Metrics</h3>
-        <p>Compute Time: {compute_time_ms} ms/frame</p>
+    <div class="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 group">
+            <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Compute Time</span>
+            <span class="text-xl font-mono font-bold text-slate-700">{compute_time_ms.toFixed(2)}<span class="text-xs ml-1 font-normal text-slate-400">ms</span></span>
+        </div>
+        
         {#if method_used === 'lbm'}
-            <p>Performance: {mlups.toFixed(2)} MLUPS</p>
-            <p>Max Mach Number: <span style="color: {mach > 0.3 ? 'red' : 'black'}">{mach.toFixed(3)}</span></p>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Throughput</span>
+                <span class="text-xl font-mono font-bold text-slate-700">{mlups.toFixed(2)}<span class="text-xs ml-1 font-normal text-slate-400">MLUPS</span></span>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Max Mach</span>
+                <span class="text-xl font-mono font-bold {mach > 0.3 ? 'text-red-500' : 'text-slate-700'}">{mach.toFixed(3)}</span>
+            </div>
         {:else}
-            <p>Max CFL Number: <span style="color: {cfl > 5.0 ? 'red' : 'black'}">{cfl.toFixed(3)}</span></p>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 col-span-2">
+                <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">CFL Stability Number</span>
+                <span class="text-xl font-mono font-bold {cfl > 5 ? 'text-red-500' : 'text-slate-700'}">{cfl.toFixed(3)}</span>
+            </div>
         {/if}
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 group">
+            <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Developed with ☕ by</span>
+            <span class="text-xl font-mono font-bold text-green-700">Meghraj Goswami</span>
+        </div>
     </div>
 </main>
