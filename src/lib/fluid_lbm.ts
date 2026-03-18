@@ -18,6 +18,7 @@ const cx = [0, 1, 0, -1, 0, 1, -1, -1, 1];
 const cy = [0, 0, 1, 0, -1, 1, 1, -1, -1];
 const w = [4/9, 1/9, 1/9, 1/9, 1/9, 1/36, 1/36, 1/36, 1/36];
 const opposite = [0, 3, 4, 1, 2, 7, 8, 5, 6];
+const flipped_y = [0, 1, 4, 3, 2, 8, 7, 6, 5];
 
 export function initLBM(nx: number, ny: number, tau: number): FluidLBM {
     const N = nx * ny;
@@ -47,7 +48,7 @@ export function idx(lbm: FluidLBM, i: number, j: number): number {
     return i * lbm.ny + j;
 }
 
-export function step(lbm: FluidLBM, inletVelocity: number) {
+export function step(lbm: FluidLBM, inletVelocity: number, bc: "free-slip" | "no-slip") {
     const { nx, ny, f, f_new, rho, u, v, solid_mask, omega } = lbm;
 
     // Collision & Macroscopic Update
@@ -110,15 +111,27 @@ export function step(lbm: FluidLBM, inletVelocity: number) {
                 let ni = i + cx[k];
                 let nj = j + cy[k];
 
-                // Zero-gradient outlet (Right wall)
-                if (ni >= nx - 1) {
-                    ni = nx - 2; 
+                // Zero-gradient (free-slip) neumann BC
+                if (ni >= nx - 1) ni = nx - 2; // right wall
+                
+                if (bc === "free-slip") {
+                    if (nj < 0) { // bottom wall
+                        nj = 0;
+                        f_new[idx(lbm, ni, nj) * 9 + flipped_y[k]] = f[n * 9 + k];
+                    } else if (nj >= ny) { // top wall
+                        nj = ny - 1;
+                        f_new[idx(lbm, ni, nj) * 9 + flipped_y[k]] = f[n * 9 + k];
+                    }
+                } else if (bc === "no-slip") {
+                    if (nj < 0 || nj >= ny) { // top/bottom walls
+                        f_new[n * 9 + opposite[k]] = f[n * 9 + k];
+                        continue;
+                    }
                 }
 
-                // Bounce-back on top/bottom walls and internal solids
-                if (nj < 0 || nj >= ny || solid_mask[idx(lbm, ni, nj)] === 0) {
-                    const inv_k = opposite[k];
-                    f_new[n * 9 + inv_k] = f[n * 9 + k];
+                // Bounce-back on internal solids
+                if (solid_mask[idx(lbm, ni, nj)] === 0) {
+                    f_new[n * 9 + opposite[k]] = f[n * 9 + k];
                 } else {
                     f_new[idx(lbm, ni, nj) * 9 + k] = f[n * 9 + k];
                 }

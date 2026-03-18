@@ -117,14 +117,24 @@ export function solvePressure(fluid: Fluid, iters: number, dt: number, over_rela
 }
 
 // free-slip (neumann, (u_i+1 - u_i)/h = 0) b'ary conditions (zero shear stress at b'ary)
-export function applyBoundaryConditions(fluid: Fluid) {
-    for (let i = 0; i < fluid.nx; i++) {
-        fluid.u[idx(fluid, i, 0)] = fluid.u[idx(fluid, i, 1)]; // bottom b'ary
-        fluid.u[idx(fluid, i, fluid.ny - 1)] = fluid.u[idx(fluid, i, fluid.ny - 2)]; // top b'ary
+export function applyBoundaryConditions(fluid: Fluid, bc: "free-slip" | "no-slip") {
+    
+    if (bc === "free-slip") { // neumann
+        for (let i = 0; i < fluid.nx; i++) {
+            fluid.u[idx(fluid, i, 0)] = fluid.u[idx(fluid, i, 1)]; // bottom b'ary
+            fluid.u[idx(fluid, i, fluid.ny - 1)] = fluid.u[idx(fluid, i, fluid.ny - 2)]; // top b'ary
+        }
+    } else if (bc === "no-slip") { // dirichlet
+        for (let i = 0; i < fluid.nx; i++) {
+            fluid.u[idx(fluid, i, 0)] = 0; // bottom b'ary
+            fluid.u[idx(fluid, i, fluid.ny - 1)] = 0; // top b'ary
+        }
     }
+    
     for (let j = 0; j < fluid.ny; j++) {
         fluid.v[idx(fluid, 0, j)] = fluid.v[idx(fluid, 1, j)]; // left b'ary
         fluid.v[idx(fluid, fluid.nx - 1, j)] = fluid.v[idx(fluid, fluid.nx - 2, j)]; // right b'ary
+        fluid.u[idx(fluid, fluid.nx - 1, j)] = fluid.u[idx(fluid, fluid.nx - 2, j)];
     }
 }
 
@@ -218,11 +228,11 @@ export function advect(fluid: Fluid, dt: number) {
 }
 
 // simulate step
-export function step(fluid: Fluid, dt: number, pressure_iters: number, over_relaxation: number, nu: number, diffuse_iters: number) {
+export function step(fluid: Fluid, dt: number, pressure_iters: number, over_relaxation: number, nu: number, diffuse_iters: number, bc: "free-slip" | "no-slip") {
     // integrateGravity(fluid, g, dt);
     if (nu > 0) diffuse(fluid, nu, dt, diffuse_iters);
     fluid.pressure.fill(0); // reset pressure field or contributions accumulate in solvePressure over iters
     solvePressure(fluid, pressure_iters, dt, over_relaxation);
-    applyBoundaryConditions(fluid); // todo: change BC
+    applyBoundaryConditions(fluid, bc); // todo: change BC
     advect(fluid, dt);
 }
