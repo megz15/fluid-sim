@@ -1,5 +1,5 @@
 <script lang="ts">
-    import * as eul from "$lib/fluid_eul";
+    import * as fdm from "$lib/fluid_fdm";
     import * as lbm from "$lib/fluid_lbm";
     import { onMount, onDestroy } from "svelte";
 
@@ -7,7 +7,7 @@
     let animation_frame: number;
 
     // global params
-    let method_used: "lbm" | "eul" = "eul";
+    let method_used: "lbm" | "fdm" = "fdm";
     let wall_BC: "free-slip" | "no-slip" = "no-slip";
     const nx = 200;
     const ny = 80; // 2.5:1 tunnel
@@ -27,7 +27,7 @@
     let cx = 40; let cy = 35;
 
     // eulerian FDM params
-    let eul_domain: eul.Fluid;
+    let eul_domain: fdm.Fluid;
     let eul_nu = 0.001; // kinematic viscosity
     let eul_h = 0.01; // grid spacing
     let eul_dt = 1/60; // 60 FPS
@@ -54,7 +54,7 @@
     // derived values
     // RE = (inlet_velocity * characteristic_length) / nu
     $: lbm_nu = (lbm_tau - 0.5) / 3;
-    $: re_eul = (eul_inlet_velocity * obstacle_size * 2) * eul_h / eul_nu;
+    $: re_fdm = (eul_inlet_velocity * obstacle_size * 2) * eul_h / eul_nu;
     $: re_lbm = (lbm_inlet_velocity * obstacle_size * 2) / lbm_nu;
 
     // reactivity
@@ -67,14 +67,14 @@
         if (!canvas) return;
         lbm_current_step = 0;
 
-        if (method_used === "eul") {
-            eul_domain = eul.initFluid(nx, ny, eul_h);
+        if (method_used === "fdm") {
+            eul_domain = fdm.initFluid(nx, ny, eul_h);
         } else {
             lbm_domain = lbm.initLBM(nx, ny, lbm_tau);
         }
 
-        const current_domain = method_used === "eul" ? eul_domain : lbm_domain;
-        const lib = method_used === "eul" ? eul : lbm;
+        const current_domain = method_used === "fdm" ? eul_domain : lbm_domain;
+        const lib = method_used === "fdm" ? fdm : lbm;
 
         for (let i = 1; i < nx - 1; i++) {
             for (let j = 1; j < ny - 1; j++) {
@@ -125,7 +125,7 @@
                     const index = lib.idx(active_domain, i, j);
                     current_domain.solid_mask[index] = 0;
                     
-                    if (method_used === "eul") {
+                    if (method_used === "fdm") {
                         current_domain.u[index] = 0;
                         current_domain.v[index] = 0;
                     }
@@ -142,13 +142,13 @@
 
         const t0 = performance.now(); // Start timer
 
-        if (method_used === "eul") {
+        if (method_used === "fdm") {
             for (let j = 0; j < ny; j++) {
-                eul_domain.u[eul.idx(eul_domain, 1, j)] = eul_inlet_velocity;
-                eul_domain.v[eul.idx(eul_domain, 1, j)] = 0;
+                eul_domain.u[fdm.idx(eul_domain, 1, j)] = eul_inlet_velocity;
+                eul_domain.v[fdm.idx(eul_domain, 1, j)] = 0;
             }
             
-            eul.step(eul_domain, eul_dt, eul_pressure_iters, overrelaxation, eul_nu, eul_diffuse_iters, wall_BC);
+            fdm.step(eul_domain, eul_dt, eul_pressure_iters, overrelaxation, eul_nu, eul_diffuse_iters, wall_BC);
             // drawPixels(canvas_pixels, eul_domain.solid_mask, eul_domain.u, eul_domain.v, eul_inlet_velocity);
         } else {
             for (let s = 0; s < lbm_steps_per_frame; s++) {
@@ -187,7 +187,7 @@
 
         // render velocity magnitude
         
-        if (method_used === "eul") {
+        if (method_used === "fdm") {
             drawPixels(canvas_pixels, eul_domain.solid_mask, eul_domain.u, eul_domain.v, eul_inlet_velocity);
         } else {
             drawPixels(canvas_pixels, lbm_domain.solid_mask, lbm_domain.u, lbm_domain.v, lbm_inlet_velocity);
@@ -200,7 +200,7 @@
     function drawPixels(canvas_pixels: ImageData, solid_mask: Float32Array, u: Float32Array, v: Float32Array, inlet_velocity: number) {
         for (let i = 0; i < nx; i++) {
             for (let j = 0; j < ny; j++) {
-                const grid_idx = i * (ny+ (method_used === "eul" ? 2 : 0) ) + j;
+                const grid_idx = i * (ny+ (method_used === "fdm" ? 2 : 0) ) + j;
                 const pixel_idx = (j * nx + i) * 4; // R, G, B, A channels
                 
                 if (solid_mask[grid_idx] === 0) {
@@ -256,7 +256,7 @@
                 <label class="flex justify-between items-center text-sm">
                     <span class="font-medium">Solver Engine</span>
                     <select bind:value={method_used} class="border rounded-md px-2 py-1 bg-slate-50 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="eul">Eulerian FDM</option>
+                        <option value="fdm">Eulerian FDM</option>
                         <option value="lbm">LBM (D2Q9)</option>
                     </select>
                 </label>
@@ -273,10 +273,10 @@
                     </select>
                 </label>
                 <label class="flex justify-between items-center text-sm">
-                    <span class="font-medium">Boundary Layer</span>
+                    <span class="font-medium">Boundary Condition</span>
                     <select bind:value={wall_BC} class="border rounded-md px-2 py-1 bg-slate-50 text-sm outline-none">
-                        <option value="free-slip">Free-Slip (Wind Tunnel)</option>
-                        <option value="no-slip">No-Slip (Pipe Flow)</option>
+                        <option value="free-slip">Free-Slip</option>
+                        <option value="no-slip">No-Slip</option>
                     </select>
                 </label>
                 <div class="pt-2 border-t border-slate-100 mt-2">
@@ -299,9 +299,9 @@
         </section>
 
         <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            {#if method_used === 'eul'}
+            {#if method_used === 'fdm'}
                 <h3 class="text-sm font-bold uppercase tracking-widest text-emerald-600 mb-4 flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span> Eulerian (Re: {re_eul.toFixed(0)})
+                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span> Finite Difference (Re: {re_fdm.toFixed(0)})
                 </h3>
                 <div class="space-y-2 text-sm">
                     <label class="flex justify-between items-center">Inlet Velocity <input type="number" step="0.1" bind:value={eul_inlet_velocity} class="w-20 border rounded px-2 py-0.5 text-right font-mono"></label>
