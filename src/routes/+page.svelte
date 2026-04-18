@@ -6,13 +6,33 @@
     let canvas: HTMLCanvasElement;
     let animation_frame: number;
 
+    // Visualization coordinates
+    let probe1_pos = { x: 0, y: 0 };
+    let probe2_pos = { x: 0, y: 0 };
+    let wake_bounds = { y_min: 0, y_max: 0 };
+
+    let render_mode: "velocity" | "vorticity" = "velocity";
+    let is_exporting = false;
+
     let current_frame = 0;
-    let v_history: number[] = [];
-    let crossing_frames: number[] = [];
+ 
+    // Strouhal
+    let crossing_frames: number[] = [];   // frame indices of rising zero-crossings
     let strouhal = 0;
-    let karman_a = 0;
-    let karman_b = 0;
+
+    // Temporal Probe State for Bearman Two-Probe Method
+    let v_history_1: number[] = [];
+    let v_history_2: number[] = [];
+    let probe1_crossings: number[] = []; // Queue to prevent phase mismatch
+    let measured_Uc = 0; // Measured convection velocity
+ 
+    // Kármán spacing — committed once per shedding cycle
+    let karman_a     = 0;
+    let karman_b     = 0;
     let karman_ratio = 0;
+ 
+    // b accumulator: collects one raw-b scan per frame; flushed at each crossing
+    let b_accumulator: number[] = [];
 
     // global params
     let method_used: "lbm" | "fdm" = "fdm";
@@ -73,90 +93,130 @@
 
     function updateWakeMetrics() {
         current_frame++;
+        const is_fdm  = method_used === "fdm";
+        const domain  = is_fdm ? fdm_domain : lbm_domain as any;
+        const lib     = is_fdm ? fdm : lbm;
+        const h       = is_fdm ? fdm_h : 1;
+        const grid_ny = is_fdm ? ny + 2 : ny;
+        const U       = is_fdm ? fdm_inlet_velocity : lbm_inlet_velocity;
+        const D       = obstacle_size * 2 * h;
         
-        const is_fdm = method_used === "fdm";
-        const domain = is_fdm ? fdm_domain : lbm_domain as any;
-        const lib = is_fdm ? fdm : lbm;
-        
-        // 1. Virtual Probe for Strouhal Number
-        const probe_x = Math.floor(cx + obstacle_size * 4);
+        const time_per_frame = is_fdm ? fdm_dt : lbm_steps_per_frame;
+        const current_time = current_frame * time_per_frame;
+
+        // 1. BEARMAN TWO-PROBE METHOD
+        const probe1_x = Math.floor(cx + obstacle_size * 4);
+        const probe2_x = Math.floor(cx + obstacle_size * 6);
         const probe_y = Math.floor(cy + obstacle_size * 0.5);
-        
-        if (probe_x < nx && probe_y < ny) {
-            const idx = lib.idx(domain, probe_x, probe_y);
-            const current_v = domain.v[idx];
-            v_history.push(current_v);
-            
-            // Detect zero-crossing (negative to positive v-velocity)
-            if (v_history.length > 2) {
-                const prev_v = v_history[v_history.length - 2];
-                if (prev_v <= 0 && current_v > 0) {
-                    crossing_frames.push(current_frame);
-                    
-                    if (crossing_frames.length > 2) {
-                        let total_frames = 0;
-                        for (let i = 1; i < crossing_frames.length; i++) {
-                            total_frames += (crossing_frames[i] - crossing_frames[i-1]);
-                        }
-                        const avg_frames_per_cycle = total_frames / (crossing_frames.length - 1);
-                        
-                        const time_per_frame = is_fdm ? fdm_dt : lbm_steps_per_frame; 
-                        const period = avg_frames_per_cycle * time_per_frame;
-                        const frequency = 1.0 / period;
-                        
-                        const U = is_fdm ? fdm_inlet_velocity : lbm_inlet_velocity;
-                        const D = obstacle_size * 2 * (is_fdm ? fdm_h : 1);
-                        
-                        strouhal = (frequency * D) / U;
-                        
-                        if (crossing_frames.length > 5) crossing_frames.shift();
+
+        if (probe2_x >= nx || probe_y >= ny) return;
+
+        probe1_pos = { x: probe1_x, y: probe_y };
+        probe2_pos = { x: probe2_x, y: probe_y };
+
+        const current_v1 = domain.v[lib.idx(domain, probe1_x, probe_y)];
+        const current_v2 = domain.v[lib.idx(domain, probe2_x, probe_y)];
+
+        v_history_1.push(current_v1);
+        v_history_2.push(current_v2);
+        if (v_history_1.length > 3) v_history_1.shift();
+        if (v_history_2.length > 3) v_history_2.shift();
+
+        let cycle_completed = false;
+
+        // --- PROBE 1: Add crossings to the queue ---
+        if (v_history_1.length > 2) {
+            if (v_history_1[v_history_1.length - 2] <= 0 && current_v1 > 0) {
+                probe1_crossings.push(current_time);
+                crossing_frames.push(current_frame);
+                cycle_completed = true;
+
+                if (crossing_frames.length > 2) {
+                    let total_frames = 0;
+                    for (let k = 1; k < crossing_frames.length; k++) {
+                        total_frames += crossing_frames[k] - crossing_frames[k - 1];
                     }
+                    const avg_frames = total_frames / (crossing_frames.length - 1);
+                    const period = avg_frames * time_per_frame;
+                    strouhal = (D / period) / U; 
+                    if (crossing_frames.length > 5) crossing_frames.shift();
                 }
             }
-            if (v_history.length > 100) v_history.shift();
         }
 
-        // 2. Spatial Scanning for 'a' and 'b' parameters
-        if (current_frame % 30 === 0) { 
-            let max_vorticity = -Infinity;
-            let min_vorticity = Infinity;
-            let y_max_vort = cy;
-            let y_min_vort = cy;
-            
-            const scan_x = probe_x;
-            
-            const scan_min = Math.max(1, cy - obstacle_size * 3);
-            const scan_max = Math.min(ny - 2, cy + obstacle_size * 3);
-            
-            for (let j = scan_min; j <= scan_max; j++) {
-                const v_right = domain.v[lib.idx(domain, scan_x + 1, j)];
-                const v_left = domain.v[lib.idx(domain, scan_x - 1, j)];
-                const u_up = domain.u[lib.idx(domain, scan_x, j + 1)];
-                const u_down = domain.u[lib.idx(domain, scan_x, j - 1)];
-                
-                const dx = is_fdm ? (2 * fdm_h) : 2;
-                const dy = is_fdm ? (2 * fdm_h) : 2;
-                
-                const vorticity = (v_right - v_left) / dx - (u_up - u_down) / dy;
-                
-                if (vorticity > max_vorticity) {
-                    max_vorticity = vorticity;
-                    y_max_vort = j;
+        // --- PROBE 2: Find matching phase delay ---
+        if (v_history_2.length > 2) {
+            if (v_history_2[v_history_2.length - 2] <= 0 && current_v2 > 0) {
+                const delta_x = (probe2_x - probe1_x) * h;
+                let matched_index = -1;
+                let best_Uc = 0;
+
+                // Search the queue for the physical vortex, ignoring acoustic shockwaves
+                for (let i = 0; i < probe1_crossings.length; i++) {
+                    const delta_t = current_time - probe1_crossings[i];
+                    if (delta_t > 0) {
+                        const instant_Uc = delta_x / delta_t;
+                        
+                        // A physical vortex must travel slower than the freestream,
+                        // but not impossibly slow (e.g., between 40% and 110% of U)
+                        if (instant_Uc > U * 0.4 && instant_Uc <= U * 1.1) {
+                            matched_index = i;
+                            best_Uc = instant_Uc;
+                            break; 
+                        }
+                    }
                 }
-                if (vorticity < min_vorticity) {
-                    min_vorticity = vorticity;
-                    y_min_vort = j;
+
+                if (matched_index !== -1) {
+                    // Update moving average with the phase-locked velocity
+                    measured_Uc = measured_Uc === 0 ? best_Uc : (measured_Uc * 0.8 + best_Uc * 0.2);
+                    // Clear matched crossing and any older unmatched noise from the queue
+                    probe1_crossings.splice(0, matched_index + 1);
                 }
             }
-            
-            karman_b = Math.abs(y_max_vort - y_min_vort) * (is_fdm ? fdm_h : 1);
-            
-            if (strouhal > 0) {
-                const U = is_fdm ? fdm_inlet_velocity : lbm_inlet_velocity;
-                const U_convection = 0.85 * U; 
-                const frequency = (strouhal * U) / (obstacle_size * 2 * (is_fdm ? fdm_h : 1));
-                karman_a = U_convection / frequency;
-                
+        }
+
+        // 2. TRANSVERSE SPACING (b) - VERTICAL VORTICITY SCAN
+        const denom = 2 * h;
+        let max_vort = -Infinity, y_max = cy;
+        let min_vort = Infinity, y_min = cy;
+        const scan_min = Math.max(1, Math.floor(cy - obstacle_size * 2.5));
+        const scan_max = Math.min(ny - 2, Math.floor(cy + obstacle_size * 2.5));
+
+        for (let j = scan_min; j <= scan_max; j++) {
+            if (domain.solid_mask[lib.idx(domain, probe1_x, j)] === 0) continue;
+
+            const v_r = domain.v[lib.idx(domain, probe1_x + 1, j)];
+            const v_l = domain.v[lib.idx(domain, probe1_x - 1, j)];
+            const u_u = domain.u[lib.idx(domain, probe1_x, j + 1)];
+            const u_d = domain.u[lib.idx(domain, probe1_x, j - 1)];
+
+            const omega = (v_r - v_l) / denom - (u_u - u_d) / denom;
+
+            if (omega > max_vort) { max_vort = omega; y_max = j; }
+            if (omega < min_vort) { min_vort = omega; y_min = j; }
+        }
+
+        wake_bounds = { y_min, y_max };
+
+        const noise_thresh = 0.05 * Math.max(Math.abs(max_vort), Math.abs(min_vort));
+        if (Math.abs(max_vort) > noise_thresh && Math.abs(min_vort) > noise_thresh) {
+            b_accumulator.push(Math.abs(y_max - y_min) * h);
+        }
+
+        // 3. LONGITUDINAL SPACING (a)
+        if (cycle_completed) {
+            if (b_accumulator.length >= 5) {
+                karman_b = b_accumulator.reduce((s, val) => s + val, 0) / b_accumulator.length;
+            }
+            b_accumulator = []; 
+
+            if (strouhal > 0 && measured_Uc > 0) {
+                const frequency = (strouhal * U) / D;
+                karman_a = measured_Uc / frequency;
+            }
+
+            if (karman_a > 0 && karman_b > 0) {
                 karman_ratio = karman_b / karman_a;
             }
         }
@@ -168,12 +228,12 @@
         
         // Reset metrics
         current_frame = 0;
-        v_history = [];
         crossing_frames = [];
         strouhal = 0;
         karman_a = 0;
         karman_b = 0;
         karman_ratio = 0;
+        b_accumulator = [];
 
         if (method_used === "fdm") {
             fdm_domain = fdm.initFluid(nx, ny, fdm_h);
@@ -301,37 +361,102 @@
         }
         
         canvas_ctx.putImageData(canvas_pixels, 0, 0);
+        // --- DRAW VISUAL OVERLAYS ---
+        if (probe1_pos.x > 0) {
+            canvas_ctx.lineWidth = 0.5;
+
+            // 1. Draw the Two Probes (Red Squares)
+            canvas_ctx.fillStyle = "rgba(255, 50, 50, 0.9)";
+            canvas_ctx.fillRect(probe1_pos.x - 1, probe1_pos.y - 1, 3, 3);
+            canvas_ctx.fillRect(probe2_pos.x - 1, probe2_pos.y - 1, 3, 3);
+
+            // 2. Draw Transverse Spacing 'b' (Yellow Line)
+            if (wake_bounds.y_max > 0) {
+                canvas_ctx.strokeStyle = "rgba(255, 220, 0, 0.8)"; 
+                canvas_ctx.beginPath();
+                canvas_ctx.moveTo(probe1_pos.x, wake_bounds.y_min);
+                canvas_ctx.lineTo(probe1_pos.x, wake_bounds.y_max);
+                
+                canvas_ctx.moveTo(probe1_pos.x - 2, wake_bounds.y_min);
+                canvas_ctx.lineTo(probe1_pos.x + 2, wake_bounds.y_min);
+                canvas_ctx.moveTo(probe1_pos.x - 2, wake_bounds.y_max);
+                canvas_ctx.lineTo(probe1_pos.x + 2, wake_bounds.y_max);
+                canvas_ctx.stroke();
+            }
+
+            // 3. Draw Longitudinal Spacing 'a' (Green Line)
+            if (karman_a > 0) {
+                const h = method_used === "fdm" ? fdm_h : 1;
+                const a_cells = karman_a / h;
+
+                canvas_ctx.strokeStyle = "rgba(50, 255, 50, 0.8)";
+                canvas_ctx.beginPath();
+                
+                // DRAW DOWNSTREAM (+)
+                canvas_ctx.moveTo(probe1_pos.x, probe1_pos.y);
+                canvas_ctx.lineTo(probe1_pos.x + a_cells, probe1_pos.y); 
+                
+                // Tick mark at the downstream end
+                canvas_ctx.moveTo(probe1_pos.x + a_cells, probe1_pos.y - 3);
+                canvas_ctx.lineTo(probe1_pos.x + a_cells, probe1_pos.y + 3);
+                canvas_ctx.stroke();
+            }
+        }
         animation_frame = requestAnimationFrame(render);
     }
 
     function drawPixels(canvas_pixels: ImageData, solid_mask: Float32Array, u: Float32Array, v: Float32Array, inlet_velocity: number) {
+        const is_fdm = method_used === "fdm";
+        const grid_ny = is_fdm ? ny + 2 : ny;
+        const h = is_fdm ? fdm_h : 1;
+
         for (let i = 0; i < nx; i++) {
             for (let j = 0; j < ny; j++) {
-                const grid_idx = method_used === "fdm"
-                    ? (i + 1) * fdm_domain.ny + (j + 1)
-                    : i * ny + j;
-                const pixel_idx = (j * nx + i) * 4; // R, G, B, A channels
+                // Map strictly to the interior domain
+                const grid_i = is_fdm ? i + 1 : i;
+                const grid_j = is_fdm ? j + 1 : j;
+                const grid_idx = grid_i * grid_ny + grid_j;
+                const pixel_idx = (j * nx + i) * 4;
                 
                 if (solid_mask[grid_idx] === 0) {
                     canvas_pixels.data[pixel_idx] = obstruction_colour.r;
                     canvas_pixels.data[pixel_idx + 1] = obstruction_colour.g;
                     canvas_pixels.data[pixel_idx + 2] = obstruction_colour.b;
-                    canvas_pixels.data[pixel_idx + 3] = 255; // black opaque
+                    canvas_pixels.data[pixel_idx + 3] = 255;
                 } else {
-                    // const smoke = fluid_domain.fluid_density[fluid_idx];
-                    // const c = Math.max(0, Math.min(255, Math.floor(255 * smoke)));
+                    if (render_mode === "velocity") {
+                        const speed = Math.sqrt(u[grid_idx]**2 + v[grid_idx]**2);
+                        const normalized_speed = Math.max(0, Math.min(1, speed / inlet_velocity));
+                        if (speed > max_speed) max_speed = speed;
 
-                    // calculate speed
-                    const speed = Math.sqrt(u[grid_idx]**2 + v[grid_idx]**2);
-                    const normalized_speed = Math.max(0, Math.min(1, speed / inlet_velocity));
+                        canvas_pixels.data[pixel_idx] = Math.floor(flow_colour.base.r + normalized_speed * flow_colour.variable.r);
+                        canvas_pixels.data[pixel_idx + 1] = Math.floor(flow_colour.base.g + normalized_speed * flow_colour.variable.g);
+                        canvas_pixels.data[pixel_idx + 2] = Math.floor(flow_colour.base.b + normalized_speed * flow_colour.variable.b);
+                        canvas_pixels.data[pixel_idx + 3] = flow_colour.a;
+                    } 
+                    else if (render_mode === "vorticity") {
+                        let vort = 0;
+                        if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1) {
+                            const dx = is_fdm ? 2 * h : 2;
+                            const dy = is_fdm ? 2 * h : 2;
+                            const dvdx = (v[(grid_i + 1) * grid_ny + grid_j] - v[(grid_i - 1) * grid_ny + grid_j]) / dx;
+                            const dudy = (u[grid_i * grid_ny + (grid_j + 1)] - u[grid_i * grid_ny + (grid_j - 1)]) / dy;
+                            vort = dvdx - dudy;
+                        }
 
-                    // Track max speed for CFL/Mach calculations
-                    if (speed > max_speed) max_speed = speed;
+                        // Scaling factors to normalize the visual intensity between methods
+                        const vort_scale = is_fdm ? 0.05 : 15.0; 
+                        const val = vort * vort_scale;
 
-                    canvas_pixels.data[pixel_idx] = Math.floor(flow_colour.base.r + normalized_speed * flow_colour.variable.r);
-                    canvas_pixels.data[pixel_idx + 1] = Math.floor(flow_colour.base.g + normalized_speed * flow_colour.variable.g);
-                    canvas_pixels.data[pixel_idx + 2] = Math.floor(flow_colour.base.b + normalized_speed * flow_colour.variable.b);
-                    canvas_pixels.data[pixel_idx + 3] = flow_colour.a; // opaque
+                        // Divergent Colormap: Negative (Clockwise) is Red, Positive (CCW) is Blue
+                        const r = val < 0 ? Math.min(255, Math.floor(-val * 255)) : 0;
+                        const b = val > 0 ? Math.min(255, Math.floor(val * 255)) : 0;
+
+                        canvas_pixels.data[pixel_idx] = r + 15; // +15 gives a very dark grey/blue base background
+                        canvas_pixels.data[pixel_idx + 1] = 15;
+                        canvas_pixels.data[pixel_idx + 2] = b + 30;
+                        canvas_pixels.data[pixel_idx + 3] = 255;
+                    }
                 }
             }
         }
@@ -401,6 +526,13 @@
                     </div>
                 </div>
             </div>
+            <label class="flex justify-between items-center text-sm">
+                <span class="font-medium">Render Field</span>
+                <select bind:value={render_mode} class="border rounded-md px-2 py-1 bg-slate-50 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="velocity">Velocity Magnitude</option>
+                    <option value="vorticity">Vorticity ($\omega$)</option>
+                </select>
+            </label>
         </section>
 
         <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
