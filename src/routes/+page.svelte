@@ -91,6 +91,56 @@
         if (canvas) resetSim();
     }
 
+    // --- TECPLOT EXPORT FUNCTION ---
+    function exportToTecplot() {
+        is_exporting = true;
+        const is_fdm = method_used === "fdm";
+        const domain = is_fdm ? fdm_domain : lbm_domain as any;
+        const h = is_fdm ? fdm_h : 1;
+        const grid_ny = is_fdm ? ny + 2 : ny;
+
+        let data = `TITLE = "${method_used.toUpperCase()} Flow Field - Re 400"\n`;
+        data += `VARIABLES = "X", "Y", "U", "V", "Velocity_Magnitude", "Vorticity"\n`;
+        data += `ZONE I=${nx}, J=${ny}, F=POINT\n`;
+
+        for (let j = 0; j < ny; j++) {
+            for (let i = 0; i < nx; i++) {
+                // Map to internal grid, avoiding ghost cells in FDM
+                const grid_i = is_fdm ? i + 1 : i;
+                const grid_j = is_fdm ? j + 1 : j;
+                const idx = grid_i * grid_ny + grid_j;
+
+                const u_val = domain.u[idx] || 0;
+                const v_val = domain.v[idx] || 0;
+                const mag = Math.sqrt(u_val**2 + v_val**2);
+
+                // Calculate local vorticity
+                let vort = 0;
+                if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1) {
+                    const dx = is_fdm ? 2 * h : 2;
+                    const dy = is_fdm ? 2 * h : 2;
+                    const dvdx = (domain.v[(grid_i + 1) * grid_ny + grid_j] - domain.v[(grid_i - 1) * grid_ny + grid_j]) / dx;
+                    const dudy = (domain.u[grid_i * grid_ny + (grid_j + 1)] - domain.u[grid_i * grid_ny + (grid_j - 1)]) / dy;
+                    vort = dvdx - dudy;
+                }
+
+                data += `${(i * h).toFixed(4)} ${(j * h).toFixed(4)} ${u_val.toFixed(6)} ${v_val.toFixed(6)} ${mag.toFixed(6)} ${vort.toFixed(6)}\n`;
+            }
+        }
+
+        const blob = new Blob([data], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `cfd_${method_used}_re400_step${current_frame}.dat`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        setTimeout(() => is_exporting = false, 500);
+    }
+
     function updateWakeMetrics() {
         current_frame++;
         const is_fdm  = method_used === "fdm";
@@ -475,6 +525,12 @@
             <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Computational Fluid Dynamics</h1>
             <p class="text-slate-500 text-sm">Real-time comparison of Eulerian FDM and Lattice Boltzmann Method</p>
         </div>
+        <button 
+            on:click={exportToTecplot}
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold tracking-wide transition-colors shadow-sm disabled:opacity-50"
+            disabled={is_exporting}>
+            {is_exporting ? 'EXPORTING...' : 'EXPORT TECPLOT (.DAT)'}
+        </button>
     </header>
     
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -509,6 +565,13 @@
                         <option value="no-slip">No-Slip</option>
                     </select>
                 </label>
+                <label class="flex justify-between items-center text-sm">
+                    <span class="font-medium">Render Field</span>
+                    <select bind:value={render_mode} class="border rounded-md px-2 py-1 bg-slate-50 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="velocity">Velocity</option>
+                        <option value="vorticity">Vorticity</option>
+                    </select>
+                </label>
                 <div class="pt-2 border-t border-slate-100 mt-2">
                     <div class="grid grid-cols-3 gap-3">
                         <label class="block">
@@ -526,13 +589,6 @@
                     </div>
                 </div>
             </div>
-            <label class="flex justify-between items-center text-sm">
-                <span class="font-medium">Render Field</span>
-                <select bind:value={render_mode} class="border rounded-md px-2 py-1 bg-slate-50 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value="velocity">Velocity Magnitude</option>
-                    <option value="vorticity">Vorticity ($\omega$)</option>
-                </select>
-            </label>
         </section>
 
         <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
@@ -603,7 +659,7 @@
             style="image-rendering: pixelated;"
         ></canvas>
         <div class="absolute top-4 right-4 bg-slate-900/80 backdrop-blur text-white px-3 py-1 rounded text-[10px] font-mono uppercase tracking-widest border border-white/10">
-            Method used: {method_used.toUpperCase()}
+            Current frame: {current_frame}
         </div>
         <div class="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur text-white px-3 py-1 rounded text-[10px] font-mono uppercase tracking-widest border border-white/10">
             {nx} x {ny} Lattice
