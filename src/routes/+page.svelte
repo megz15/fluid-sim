@@ -11,6 +11,10 @@
     let probe2_pos = { x: 0, y: 0 };
     let wake_bounds = { y_min: 0, y_max: 0 };
 
+    let probe1_dist = 4.0;
+    let probe2_dist = 6.0;
+    let show_overlays = true;
+
     let render_mode: "velocity" | "vorticity" = "velocity";
     let is_exporting = false;
 
@@ -20,13 +24,13 @@
     let crossing_frames: number[] = [];   // frame indices of rising zero-crossings
     let strouhal = 0;
 
-    // Temporal Probe State for Bearman Two-Probe Method
+    // Bearman Two-Probe Method
     let v_history_1: number[] = [];
     let v_history_2: number[] = [];
-    let probe1_crossings: number[] = []; // Queue to prevent phase mismatch
+    let probe1_crossings: number[] = [];
     let measured_Uc = 0; // Measured convection velocity
  
-    // Kármán spacing — committed once per shedding cycle
+    // Karman spacing
     let karman_a     = 0;
     let karman_b     = 0;
     let karman_ratio = 0;
@@ -70,7 +74,7 @@
     let lbm_inlet_velocity = 0.2; // lattice units
     let lbm_steps_per_frame = 15; // speed vs accuracy tradeoff
     let lbm_current_step = 0; // track total steps for inlet ramping
-    let lbm_shock_ramp_steps = 1000; // steps to ramp up inl700et velocity to avoid "shock"
+    let lbm_shock_ramp_steps = 0; // steps to ramp up inlet velocity to avoid "shock"
 
     // Profiling & Stability Metrics
     let compute_time_ms = 0; // milliseconds per frame
@@ -91,7 +95,7 @@
         if (canvas) resetSim();
     }
 
-    // --- TECPLOT EXPORT FUNCTION ---
+    // tecplot export function
     function exportToTecplot() {
         is_exporting = true;
         const is_fdm = method_used === "fdm";
@@ -147,16 +151,15 @@
         const domain  = is_fdm ? fdm_domain : lbm_domain as any;
         const lib     = is_fdm ? fdm : lbm;
         const h       = is_fdm ? fdm_h : 1;
-        const grid_ny = is_fdm ? ny + 2 : ny;
         const U       = is_fdm ? fdm_inlet_velocity : lbm_inlet_velocity;
         const D       = obstacle_size * 2 * h;
         
         const time_per_frame = is_fdm ? fdm_dt : lbm_steps_per_frame;
         const current_time = current_frame * time_per_frame;
 
-        // 1. BEARMAN TWO-PROBE METHOD
-        const probe1_x = Math.floor(cx + obstacle_size * 4);
-        const probe2_x = Math.floor(cx + obstacle_size * 6);
+        // Bearman two-probe implementation
+        const probe1_x = Math.floor(cx + obstacle_size * probe1_dist);
+        const probe2_x = Math.floor(cx + obstacle_size * probe2_dist);
         const probe_y = Math.floor(cy + obstacle_size * 0.5);
 
         if (probe2_x >= nx || probe_y >= ny) return;
@@ -174,7 +177,7 @@
 
         let cycle_completed = false;
 
-        // --- PROBE 1: Add crossings to the queue ---
+        // Probe 1 crossings
         if (v_history_1.length > 2) {
             if (v_history_1[v_history_1.length - 2] <= 0 && current_v1 > 0) {
                 probe1_crossings.push(current_time);
@@ -194,21 +197,31 @@
             }
         }
 
-        // --- PROBE 2: Find matching phase delay ---
+        // Probe 2 find matching crossing
         if (v_history_2.length > 2) {
             if (v_history_2[v_history_2.length - 2] <= 0 && current_v2 > 0) {
                 const delta_x = (probe2_x - probe1_x) * h;
                 let matched_index = -1;
-                let best_Uc = 0;
+                let best_Uc = 0; // best convection velocity candidate
 
-                // Search the queue for the physical vortex, ignoring acoustic shockwaves
+                // If a timestamp is older than the slowest allowed physical vortex (0.4U), drop it.
+                // while (probe1_crossings.length > 0) {
+                //     const dt = current_time - probe1_crossings[0];
+                //     const max_possible_time = delta_x / (U * 0.4); 
+                //     if (dt > max_possible_time) {
+                //         probe1_crossings.shift(); 
+                //     } else {
+                //         break;
+                //     }
+                // }
+
+                // Search the queue for the physical vortex
                 for (let i = 0; i < probe1_crossings.length; i++) {
                     const delta_t = current_time - probe1_crossings[i];
                     if (delta_t > 0) {
                         const instant_Uc = delta_x / delta_t;
                         
-                        // A physical vortex must travel slower than the freestream,
-                        // but not impossibly slow (e.g., between 40% and 110% of U)
+                        // setting vortex speed to between 40% and 110% of U)
                         if (instant_Uc > U * 0.4 && instant_Uc <= U * 1.1) {
                             matched_index = i;
                             best_Uc = instant_Uc;
@@ -218,15 +231,14 @@
                 }
 
                 if (matched_index !== -1) {
-                    // Update moving average with the phase-locked velocity
-                    measured_Uc = measured_Uc === 0 ? best_Uc : (measured_Uc * 0.8 + best_Uc * 0.2);
-                    // Clear matched crossing and any older unmatched noise from the queue
+                    measured_Uc = measured_Uc === 0 ? best_Uc : measured_Uc //(measured_Uc * 0.8 + best_Uc * 0.2);
+                    // Clear matched crossing and older ones
                     probe1_crossings.splice(0, matched_index + 1);
                 }
             }
         }
 
-        // 2. TRANSVERSE SPACING (b) - VERTICAL VORTICITY SCAN
+        // Transverse spacing `b`
         const denom = 2 * h;
         let max_vort = -Infinity, y_max = cy;
         let min_vort = Infinity, y_min = cy;
@@ -249,12 +261,13 @@
 
         wake_bounds = { y_min, y_max };
 
-        const noise_thresh = 0.05 * Math.max(Math.abs(max_vort), Math.abs(min_vort));
-        if (Math.abs(max_vort) > noise_thresh && Math.abs(min_vort) > noise_thresh) {
-            b_accumulator.push(Math.abs(y_max - y_min) * h);
-        }
+        // const noise_thresh = 0.05 * Math.max(Math.abs(max_vort), Math.abs(min_vort));
+        // if (Math.abs(max_vort) > noise_thresh && Math.abs(min_vort) > noise_thresh) {
+        //     b_accumulator.push(Math.abs(y_max - y_min) * h);
+        // }
+        b_accumulator.push(Math.abs(y_max - y_min) * h);
 
-        // 3. LONGITUDINAL SPACING (a)
+        // Longitudinal spacing `a` and karman ratio
         if (cycle_completed) {
             if (b_accumulator.length >= 5) {
                 karman_b = b_accumulator.reduce((s, val) => s + val, 0) / b_accumulator.length;
@@ -411,8 +424,8 @@
         }
         
         canvas_ctx.putImageData(canvas_pixels, 0, 0);
-        // --- DRAW VISUAL OVERLAYS ---
-        if (probe1_pos.x > 0) {
+        // draw probes and spacing overlays
+        if (show_overlays && probe1_pos.x > 0) {
             canvas_ctx.lineWidth = 0.5;
 
             // 1. Draw the Two Probes (Red Squares)
@@ -648,6 +661,10 @@
                         <input type="number" bind:value={flow_colour.a} min="0" max="255" class="w-full border rounded px-1 text-center bg-white text-xs py-1 font-bold" title="Alpha (Opacity)">
                     </div>
                 </div>
+                <label class="flex justify-between items-center text-sm cursor-pointer">
+                    <span class="font-medium">Show Overlays</span>
+                    <input type="checkbox" bind:checked={show_overlays} class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500">
+                </label>
             </div>
         </section>
     </div>
@@ -696,7 +713,7 @@
         <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-between">
             <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Karman Spacing</span>
             <div class="flex items-end justify-between">
-                <span class="text-xl font-mono font-bold {Math.abs(karman_ratio - 0.281) < 0.05 ? 'text-emerald-600' : 'text-slate-700'}">
+                <span class="text-xl font-mono font-bold {Math.abs(karman_ratio - 0.281) < 0.1 ? 'text-emerald-600' : 'text-slate-700'}">
                     {karman_ratio > 0 ? karman_ratio.toFixed(3) : '---'} <span class="text-xs font-normal text-slate-400 ml-1">b/a</span>
                 </span>
                 <div class="text-[10px] font-mono text-slate-500 text-right leading-tight border-l border-slate-200 pl-2">
