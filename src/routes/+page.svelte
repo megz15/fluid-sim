@@ -47,10 +47,22 @@
 
     // colours
     let obstruction_colour = { r: 0, g: 0, b: 0 }; // black
+    
     let flow_colour = {
         base: { r: 0, g: 0, b: 200 },
         variable: { r: 100, g: 255, b: 55 },
         a: 255
+    };
+    let vorticity_colour = {
+        cw: { r: 255, g: 0, b: 0 },    // Clockwise (Negative/Red)
+        ccw: { r: 0, g: 100, b: 255 }, // Counter-Clockwise (Positive/Blue)
+        bg: { r: 15, g: 15, b: 30 }    // Background (Dark Navy)
+    };
+
+    let overlay_colours = {
+        probe: { r: 255, g: 50, b: 50, a: 0.9 },   // Red Probes
+        b_line: { r: 255, g: 220, b: 0, a: 0.8 },  // Yellow Transverse Line
+        a_line: { r: 50, g: 255, b: 50, a: 0.8 }   // Green Longitudinal Line
     };
     
     // obstruction
@@ -74,7 +86,7 @@
     let lbm_inlet_velocity = 0.2; // lattice units
     let lbm_steps_per_frame = 15; // speed vs accuracy tradeoff
     let lbm_current_step = 0; // track total steps for inlet ramping
-    let lbm_shock_ramp_steps = 0; // steps to ramp up inlet velocity to avoid "shock"
+    let lbm_shock_ramp_steps = 500; // steps to ramp up inlet velocity to avoid "shock"
 
     // Profiling & Stability Metrics
     let compute_time_ms = 0; // milliseconds per frame
@@ -231,7 +243,7 @@
                 }
 
                 if (matched_index !== -1) {
-                    measured_Uc = measured_Uc === 0 ? best_Uc : measured_Uc //(measured_Uc * 0.8 + best_Uc * 0.2);
+                    measured_Uc = measured_Uc === 0 ? best_Uc : (measured_Uc * 0.8 + best_Uc * 0.2); //measured_Uc
                     // Clear matched crossing and older ones
                     probe1_crossings.splice(0, matched_index + 1);
                 }
@@ -428,14 +440,14 @@
         if (show_overlays && probe1_pos.x > 0) {
             canvas_ctx.lineWidth = 0.5;
 
-            // 1. Draw the Two Probes (Red Squares)
-            canvas_ctx.fillStyle = "rgba(255, 50, 50, 0.9)";
+            // 1. Draw the Two Probes
+            canvas_ctx.fillStyle = `rgba(${overlay_colours.probe.r}, ${overlay_colours.probe.g}, ${overlay_colours.probe.b}, ${overlay_colours.probe.a})`;
             canvas_ctx.fillRect(probe1_pos.x - 1, probe1_pos.y - 1, 3, 3);
             canvas_ctx.fillRect(probe2_pos.x - 1, probe2_pos.y - 1, 3, 3);
 
-            // 2. Draw Transverse Spacing 'b' (Yellow Line)
+            // 2. Draw Transverse Spacing 'b'
             if (wake_bounds.y_max > 0) {
-                canvas_ctx.strokeStyle = "rgba(255, 220, 0, 0.8)"; 
+                canvas_ctx.strokeStyle = `rgba(${overlay_colours.b_line.r}, ${overlay_colours.b_line.g}, ${overlay_colours.b_line.b}, ${overlay_colours.b_line.a})`; 
                 canvas_ctx.beginPath();
                 canvas_ctx.moveTo(probe1_pos.x, wake_bounds.y_min);
                 canvas_ctx.lineTo(probe1_pos.x, wake_bounds.y_max);
@@ -447,19 +459,17 @@
                 canvas_ctx.stroke();
             }
 
-            // 3. Draw Longitudinal Spacing 'a' (Green Line)
+            // 3. Draw Longitudinal Spacing 'a'
             if (karman_a > 0) {
                 const h = method_used === "fdm" ? fdm_h : 1;
                 const a_cells = karman_a / h;
 
-                canvas_ctx.strokeStyle = "rgba(50, 255, 50, 0.8)";
+                canvas_ctx.strokeStyle = `rgba(${overlay_colours.a_line.r}, ${overlay_colours.a_line.g}, ${overlay_colours.a_line.b}, ${overlay_colours.a_line.a})`;
                 canvas_ctx.beginPath();
                 
-                // DRAW DOWNSTREAM (+)
                 canvas_ctx.moveTo(probe1_pos.x, probe1_pos.y);
                 canvas_ctx.lineTo(probe1_pos.x + a_cells, probe1_pos.y); 
                 
-                // Tick mark at the downstream end
                 canvas_ctx.moveTo(probe1_pos.x + a_cells, probe1_pos.y - 3);
                 canvas_ctx.lineTo(probe1_pos.x + a_cells, probe1_pos.y + 3);
                 canvas_ctx.stroke();
@@ -507,17 +517,17 @@
                             vort = dvdx - dudy;
                         }
 
-                        // Scaling factors to normalize the visual intensity between methods
                         const vort_scale = is_fdm ? 0.05 : 15.0; 
                         const val = vort * vort_scale;
 
-                        // Divergent Colormap: Negative (Clockwise) is Red, Positive (CCW) is Blue
-                        const r = val < 0 ? Math.min(255, Math.floor(-val * 255)) : 0;
-                        const b = val > 0 ? Math.min(255, Math.floor(val * 255)) : 0;
+                        // Calculate intensity magnitudes
+                        const cw_mag = val < 0 ? Math.min(1, -val) : 0;
+                        const ccw_mag = val > 0 ? Math.min(1, val) : 0;
 
-                        canvas_pixels.data[pixel_idx] = r + 15; // +15 gives a very dark grey/blue base background
-                        canvas_pixels.data[pixel_idx + 1] = 15;
-                        canvas_pixels.data[pixel_idx + 2] = b + 30;
+                        // Additive blending over the background color
+                        canvas_pixels.data[pixel_idx] = Math.min(255, vorticity_colour.bg.r + Math.floor(cw_mag * vorticity_colour.cw.r) + Math.floor(ccw_mag * vorticity_colour.ccw.r));
+                        canvas_pixels.data[pixel_idx + 1] = Math.min(255, vorticity_colour.bg.g + Math.floor(cw_mag * vorticity_colour.cw.g) + Math.floor(ccw_mag * vorticity_colour.ccw.g));
+                        canvas_pixels.data[pixel_idx + 2] = Math.min(255, vorticity_colour.bg.b + Math.floor(cw_mag * vorticity_colour.cw.b) + Math.floor(ccw_mag * vorticity_colour.ccw.b));
                         canvas_pixels.data[pixel_idx + 3] = 255;
                     }
                 }
@@ -631,12 +641,68 @@
             {/if}
         </section>
 
-        <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            <h3 class="text-sm font-bold uppercase tracking-widest text-amber-600 mb-4 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-amber-600"></span> Colours
-            </h3>
+        <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 overflow-y-auto max-h-80">
+            <div class="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-slate-100 z-10">
+                <h3 class="text-sm font-bold uppercase tracking-widest text-amber-600 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-amber-600"></span> Visuals
+                </h3>
+                <label class="flex items-center text-sm cursor-pointer gap-2">
+                    <span class="font-medium text-xs text-slate-500 uppercase">Show Overlays</span>
+                    <input type="checkbox" bind:checked={show_overlays} class="w-4 h-4 text-blue-600 rounded border-slate-300">
+                </label>
+            </div>
+
             <div class="space-y-4">
-                <div>
+                <div class="space-y-2">
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Probe Offsets</span>
+                    <div class="flex gap-2">
+                        <label class="w-full flex items-center gap-2 text-xs text-slate-500">
+                            Probe 1
+                            <input type="number" step="0.5" min="1" max="15" bind:value={probe1_dist} class="border rounded px-2 py-1 font-mono text-slate-800">
+                        </label>
+                        <label class="w-full flex items-center gap-2 text-xs text-slate-500">
+                            Probe 2
+                            <input type="number" step="0.5" min="{probe1_dist + 0.5}" max="20" bind:value={probe2_dist} class="border rounded px-2 py-1 font-mono text-slate-800">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 space-y-2">
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Velocity Field RGB</span>
+                    <div class="flex gap-1">
+                        <input type="number" bind:value={flow_colour.base.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1">
+                        <input type="number" bind:value={flow_colour.base.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1">
+                        <input type="number" bind:value={flow_colour.base.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1">
+                    </div>
+                    <div class="flex gap-1 mt-1">
+                        <input type="number" bind:value={flow_colour.variable.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1" title="Red Scale">
+                        <input type="number" bind:value={flow_colour.variable.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1" title="Green Scale">
+                        <input type="number" bind:value={flow_colour.variable.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1" title="Blue Scale">
+                        <input type="number" bind:value={flow_colour.a} min="0" max="255" class="w-full border rounded px-1 text-center bg-white text-xs py-1 font-bold" title="Alpha">
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 space-y-2">
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Vorticity Background RGB</span>
+                    <div class="flex gap-1">
+                        <input type="number" bind:value={vorticity_colour.bg.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1">
+                        <input type="number" bind:value={vorticity_colour.bg.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1">
+                        <input type="number" bind:value={vorticity_colour.bg.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1">
+                    </div>
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mt-2 mb-1">Vorticity CW (Red) / CCW (Blue)</span>
+                    <div class="flex gap-1">
+                        <input type="number" bind:value={vorticity_colour.cw.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1">
+                        <input type="number" bind:value={vorticity_colour.cw.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1">
+                        <input type="number" bind:value={vorticity_colour.cw.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1">
+                    </div>
+                    <div class="flex gap-1 mt-1">
+                        <input type="number" bind:value={vorticity_colour.ccw.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1">
+                        <input type="number" bind:value={vorticity_colour.ccw.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1">
+                        <input type="number" bind:value={vorticity_colour.ccw.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1">
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 space-y-2">
                     <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Obstruction RGB</span>
                     <div class="flex gap-1">
                         <input type="number" bind:value={obstruction_colour.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1" title="Red">
@@ -644,27 +710,16 @@
                         <input type="number" bind:value={obstruction_colour.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1" title="Blue">
                     </div>
                 </div>
-                <div>
-                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Flow Base RGB</span>
+
+                <div class="pt-3 border-t border-slate-100 space-y-2">
+                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Overlay Base (Probes)</span>
                     <div class="flex gap-1">
-                        <input type="number" bind:value={flow_colour.base.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1">
-                        <input type="number" bind:value={flow_colour.base.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1">
-                        <input type="number" bind:value={flow_colour.base.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1">
+                        <input type="number" bind:value={overlay_colours.probe.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1">
+                        <input type="number" bind:value={overlay_colours.probe.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1">
+                        <input type="number" bind:value={overlay_colours.probe.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1">
+                        <input type="number" bind:value={overlay_colours.probe.a} step="0.1" min="0" max="1" class="w-full border rounded px-1 text-center bg-white text-xs py-1 font-bold">
                     </div>
                 </div>
-                <div>
-                    <span class="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Flow Variable & Opacity</span>
-                    <div class="flex gap-1">
-                        <input type="number" bind:value={flow_colour.variable.r} min="0" max="255" class="w-full border rounded px-1 text-center bg-red-50 text-xs py-1" title="Red Speed Scaling">
-                        <input type="number" bind:value={flow_colour.variable.g} min="0" max="255" class="w-full border rounded px-1 text-center bg-green-50 text-xs py-1" title="Green Speed Scaling">
-                        <input type="number" bind:value={flow_colour.variable.b} min="0" max="255" class="w-full border rounded px-1 text-center bg-blue-50 text-xs py-1" title="Blue Speed Scaling">
-                        <input type="number" bind:value={flow_colour.a} min="0" max="255" class="w-full border rounded px-1 text-center bg-white text-xs py-1 font-bold" title="Alpha (Opacity)">
-                    </div>
-                </div>
-                <label class="flex justify-between items-center text-sm cursor-pointer">
-                    <span class="font-medium">Show Overlays</span>
-                    <input type="checkbox" bind:checked={show_overlays} class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500">
-                </label>
             </div>
         </section>
     </div>
