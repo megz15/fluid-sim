@@ -354,8 +354,8 @@
             <tbody>
                 <tr><td>Theoretical basis</td><td>Macroscopic NS equations</td><td>Mesoscopic kinetic theory </td></tr>
                 <tr><td>Primary variable</td><td>u, p</td><td>f<sub>k</sub> — 9 per cell </td></tr>
-                <tr><td>Grid</td><td>Staggered MAC</td><td>Collocated uniform </td></tr>
-                <tr><td>Pressure solve</td><td>Iterative Poisson (40 G-S iters)</td><td>EOS: p = ρc²<sub>s</sub> (local) </td></tr>
+                <tr><td>Grid</td><td>Staggered MAC</td><td>Lattice </td></tr>
+                <tr><td>Pressure solve</td><td>Iterative Poisson (40 G-S iters)</td><td>Implicit </td></tr>
             </tbody>
             </table>
         </section>
@@ -368,7 +368,7 @@
             </thead>
             <tbody>
                 <tr><td>Viscosity</td><td>Explicit diffusion term</td><td>Encoded in τ: ν = (τ−0.5)/3 </td></tr>
-                <tr><td>Integration</td><td>Fractional step, 5 sub-steps</td><td>Explicit: collide + stream </td></tr>
+                <!-- <tr><td>Integration</td><td>Fractional step, 5 sub-steps</td><td>Explicit: collide + stream </td></tr> -->
                 <tr><td>Parallelism</td><td>Limited (global pressure solve)</td><td><span class="hl3">Perfectly parallel</span> </td></tr>
             </tbody>
             </table>
@@ -699,7 +699,7 @@
             <ul style="font-size:0.62em;">
                 <li>Both reproduce von Karman vortex street for all 7 shapes </li>
                 <li>Same qualitative wake structure at matched Re = 400 </li>
-                <li>Consistent Strouhal numbers (St ≈ 0.12 for cylinder) </li>
+                <li>Consistent Strouhal numbers </li>
             </ul>
             </div>
             <div class="card accent-r" style="margin-top:0.8em;">
@@ -718,7 +718,7 @@
             <div class="card accent-g">
             <h3>3D at Re ≈ 400</h3>
             <p style="font-size:0.62em; margin:0;">
-                At Re = 400, a circular cylinder is within the transitional regime where three-dimensional instabilities are known to develop. The 3D D3Q19 solver captures this physical spanwise deformation that is structurally missed by 2D simulations assuming infinite spanwise coherence.
+                At Re = 400, a circular cylinder is within the transitional regime where three-dimensional instabilities are known to develop. The 3D D3Q19 solver captures this physical spanwise deformation that is structurally missed by 2D simulations.
             </p>
             </div>
         </section>
@@ -742,7 +742,7 @@
                 <h3>Methods</h3>
                 <ul>
                 <li><strong>SPH</strong> — mesh-free Lagrangian; no advection diffusion; good for free-surface flows </li>
-                <li><strong>MRT-LBM</strong> — multi-relaxation-time for better high-Re stability</li>
+                <!-- <li><strong>MRT-LBM</strong> — multi-relaxation-time for better high-Re stability</li> -->
                 <li><strong>LES</strong> in LBM — extend to turbulent regime (Re &gt; 500) </li>
                 </ul>
             </div>
