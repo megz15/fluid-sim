@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+		/>
+
+		<title>FDM vs LBM: CE F377 Seminar</title>
+
+		<link rel="stylesheet" href="dist/reset.css" />
+		<link rel="stylesheet" href="dist/reveal.css" />
+		<link rel="stylesheet" href="dist/theme/black.css" />
+
+		<!-- Theme used for syntax highlighted code -->
+		<link rel="stylesheet" href="dist/plugin/highlight/monokai.css" />
+
+		<style>
+         :root {
+         --bg: #080c14;
+         --surface: #0e1521;
+         --border: #1e2d45;
+         --accent: #00d4ff;
+         --accent2: #ff4d6d;
+         --accent3: #7fff6e;
+         --muted: #4a6280;
+         --text: #c9d8ea;
+         --heading: #e8f4ff;
+         }
+         .reveal { font-family: 'Syne', sans-serif; color: var(--text); background: var(--bg); }
+         .reveal .slides section { background: transparent; }
+         .reveal h1, .reveal h2, .reveal h3 { font-family: 'Syne', sans-serif; text-transform: none; letter-spacing: -0.02em; }
+         .reveal h1 { font-size: 2.4em; font-weight: 800; color: var(--heading); line-height: 1.1; }
+         .reveal h2 { font-size: 1.5em; font-weight: 700; color: var(--accent); margin-bottom: 0.6em; }
+         .reveal h3 { font-size: 1.1em; font-weight: 600; color: var(--accent); margin-bottom: 0.4em; }
+         .reveal p, .reveal li { font-size: 0.72em; line-height: 1.65; color: var(--text); }
+         .reveal ul { list-style: none; padding: 0; }
+         .reveal ul li::before { content: "→ "; color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+         .reveal code { font-family: 'JetBrains Mono', monospace; font-size: 0.8em; color: var(--accent3); background: #0a1a0a; padding: 0.1em 0.35em; border-radius: 3px; }
+         .reveal .mono { font-family: 'JetBrains Mono', monospace; }
+         /* ─── LAYOUT UTILITIES ─── */
+         .cols { display: grid; gap: 1.6em; }
+         .cols-2 { grid-template-columns: 1fr 1fr; }
+         .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+         .cols-60-40 { grid-template-columns: 60fr 40fr; }
+         /* ─── CARDS ─── */
+         .card {
+         background: var(--surface);
+         border: 1px solid var(--border);
+         border-radius: 8px;
+         padding: 1em 1.2em;
+         }
+         .card.accent-l { border-left: 3px solid var(--accent); }
+         .card.accent-r { border-left: 3px solid var(--accent2); }
+         .card.accent-g { border-left: 3px solid var(--accent3); }
+         /* ─── TABLE ─── */
+         .reveal table { width: 100%; border-collapse: collapse; font-size: 0.65em; }
+         .reveal table th { background: #101c2e; color: var(--accent); font-family: 'JetBrains Mono', monospace; font-weight: 400; padding: 0.5em 0.8em; border-bottom: 1px solid var(--border); text-align: left; }
+         .reveal table td { padding: 0.45em 0.8em; border-bottom: 1px solid #12202e; vertical-align: top; }
+         .reveal table tr:last-child td { border-bottom: none; }
+         .reveal table tr:nth-child(even) td { background: #0a1220; }
+         /* ─── IMAGE PLACEHOLDER ─── */
+         .img-ph {
+         background: var(--surface);
+         border: 1.5px dashed var(--border);
+         border-radius: 6px;
+         display: flex;
+         flex-direction: column;
+         align-items: center;
+         justify-content: center;
+         gap: 0.4em;
+         color: var(--muted);
+         font-family: 'JetBrains Mono', monospace;
+         font-size: 0.6em;
+         min-height: 160px;
+         }
+         .img-ph .ph-icon { font-size: 1.8em; opacity: 0.4; }
+         .img-ph span { opacity: 0.6; }
+         /* ─── FORMULA BOX ─── */
+         .formula {
+         background: #060e18;
+         border: 1px solid var(--border);
+         border-radius: 6px;
+         padding: 0.6em 1em;
+         font-family: 'JetBrains Mono', monospace;
+         font-size: 0.72em;
+         color: var(--accent3);
+         text-align: center;
+         margin: 0.5em 0;
+         }
+         /* ─── TITLE SLIDE ─── */
+         .title-slide { text-align: left; padding: 0 0.5em; }
+         .title-slide .course-tag {
+         display: inline-block;
+         background: #0d1f35;
+         border: 1px solid var(--accent);
+         color: var(--accent);
+         font-family: 'JetBrains Mono', monospace;
+         font-size: 0.5em;
+         padding: 0.3em 0.8em;
+         border-radius: 3px;
+         letter-spacing: 0.12em;
+         margin-bottom: 0.8em;
+         }
+         .title-slide .title-accent { color: var(--accent); }
+         .title-slide .meta { margin-top: 1.6em; font-family: 'JetBrains Mono', monospace; font-size: 0.42em; color: var(--muted); line-height: 2; }
+         .title-slide .meta span { color: var(--text); }
+         /* ─── BADGE ─── */
+         .badge {
+         display: inline-block;
+         font-family: 'JetBrains Mono', monospace;
+         font-size: 0.55em;
+         padding: 0.2em 0.6em;
+         border-radius: 3px;
+         margin: 0.1em;
+         }
+         .badge.blue { background: #0a2035; color: var(--accent); border: 1px solid #1a4060; }
+         .badge.red { background: #200a12; color: var(--accent2); border: 1px solid #601a2a; }
+         .badge.green { background: #0a200a; color: var(--accent3); border: 1px solid #1a601a; }
+         /* ─── DIVIDER LABEL ─── */
+         .section-label {
+         display: inline-block;
+         font-family: 'JetBrains Mono', monospace;
+         font-size: 0.38em;
+         letter-spacing: 0.2em;
+         color: var(--muted);
+         border-bottom: 1px solid var(--border);
+         padding-bottom: 0.4em;
+         margin-bottom: 0.6em;
+         text-transform: uppercase;
+         }
+         /* ─── HIGHLIGHT ─── */
+         .hl { color: var(--accent); font-weight: 700; }
+         .hl2 { color: var(--accent2); font-weight: 700; }
+         .hl3 { color: var(--accent3); font-weight: 700; }
+         /* ─── METRIC ROW ─── */
+         .metric-row { display: flex; gap: 1em; justify-content: center; flex-wrap: wrap; }
+         .metric-box {
+         background: var(--surface);
+         border: 1px solid var(--border);
+         border-radius: 8px;
+         padding: 0.7em 1.4em;
+         text-align: center;
+         min-width: 120px;
+         }
+         .metric-box .val { font-family: 'JetBrains Mono', monospace; font-size: 0.6em; font-weight: 700; color: var(--accent); }
+         .metric-box .lbl { font-size: 0.5em; color: var(--muted); margin-top: 0.2em; text-transform: uppercase; letter-spacing: 0.1em; }
+         /* ─── BACKGROUND GRID ─── */
+         .reveal .slides {
+         background-image: radial-gradient(circle at 1px 1px, #1a2a3a22 1px, transparent 0);
+         background-size: 32px 32px;
+         }
+         /* ─── SECTION DIVIDER SLIDES ─── */
+         .divider-slide { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; }
+         .divider-slide .num { font-family: 'JetBrains Mono', monospace; font-size: 5em; font-weight: 700; color: #0e1e2e; line-height: 1; }
+         .divider-slide h2 { font-size: 1.8em; color: var(--accent); margin: 0; }
+         .divider-slide p { color: var(--muted); font-size: 0.7em; }
+         /* ─── PROGRESS BAR ─── */
+         .reveal .progress { color: var(--accent); height: 2px; }
+         .reveal .controls { color: var(--accent); }
+         /* Normalize MathJax sizing in reveal */
+         .MJX-TEX { font-size: 0.95em; }
+         .two-probe-diagram { font-family: 'JetBrains Mono', monospace; font-size: 0.62em; color: var(--text); line-height: 1.6; }
+      </style>
+	</head>
+	<body>
+		<div class="reveal">
+    <div class="slides">
+        <section>
+        <div class="title-slide">
+            <div class="course-tag">CE F377 · CFD · MAY 2026</div>
+            <h1>Comparative Analysis of<br>
+            <span class="title-accent">Macroscopic & Mesoscopic</span><br>
+            Fluid Solvers
+            </h1>
+            <p style="font-size:0.65em; color:var(--text); margin-top:0.4em;">
+            Eulerian FDM (Chorin Projection) &nbsp;vs.&nbsp; Lattice Boltzmann Method (D2Q9 / D3Q19)
+            </p>
+            <div class="meta">
+            AUTHOR &nbsp;&nbsp; <span>Meghraj Goswami — 2022A2B41869H</span><br>
+            SUPERVISOR &nbsp;&nbsp; <span>Prof. Jagadeesh Anmala</span><br>
+            INSTITUTE &nbsp;&nbsp; <span>BITS Pilani, Hyderabad Campus</span>
+            </div>
+        </div>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Overview</div>
+            <h2>What This Project Does</h2>
+            <div class="card accent-l">
+            <h3>Implementation</h3>
+            <ul>
+                <li>2D FDM solver — TypeScript / SvelteKit </li>
+                <li>2D LBM D2Q9 solver — TypeScript / SvelteKit </li>
+                <li>3D LBM D3Q19 solver — Python / NumPy </li>
+                <li>VTK export → ParaView / Tecplot 360 </li>
+                <li>Interactive browser app, zero-dependency real-time rendering </li>
+            </ul>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Overview</div>
+            <h2>What This Project Does</h2>
+            <div class="card accent-r">
+            <h3>Post-Midsemester Extensions</h3>
+            <ul>
+                <li><span class="hl">Strouhal number</span> measurement (zero-crossing probe) </li>
+                <li><span class="hl">Bearman two-probe</span> convection velocity + Karman <em>b/a</em> </li>
+                <li>Vorticity visualisation mode (blue / red) </li>
+                <li>3D D3Q19 with VTK/ParaView workflow </li>
+            </ul>
+            </div>
+            <div class="card accent-g" style="margin-top:1em;">
+            <p style="margin:0;">Both 2D solvers run side-by-side at a matched <span class="hl">Re = 400</span> for seven obstacle geometries.
+            Flow of interest: <strong>von Karman vortex street</strong> behind bluff bodies.</p>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Governing Equations</div>
+            <h2>Incompressible Navier--Stokes</h2>
+            <div class="formula">∇·u = 0 &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)">// mass conservation</span></div>
+            <div class="formula">∂u/∂t + (u·∇)u = −(1/ρ)∇p + ν∇²u + f</div>
+            <p style="margin-top:0.8em; font-size:0.65em;">
+            <span class="hl">Re = UD/ν</span> — single parameter controlling flow regime.<br>
+            At <strong>Re = 400</strong>: periodic vortex shedding regime for a circular cylinder.
+            </p>
+            <div class="formula">ω = ∂v/∂x − ∂u/∂y &nbsp;&nbsp;<span style="color:var(--muted)">// 2D vorticity</span></div>
+            <div class="formula">St = fD/U &nbsp;&nbsp;<span style="color:var(--muted)">// Strouhal number</span></div>
+        </section>
+        <section>
+            <div class="section-label">Governing Equations</div>
+            <h2>Flow Regime Classification</h2>
+            <table>
+            <thead><tr><th>Re range</th><th>Flow type</th></tr></thead>
+            <tbody>
+                <tr><td>&lt; 5</td><td>Creeping (Stokes)</td></tr>
+                <tr><td>5 -- 47</td><td>Steady separated</td></tr>
+                <tr><td>47 -- 190</td><td>Periodic shedding ✓</td></tr>
+                <tr><td>190 -- 500</td><td style="color:var(--accent)">Transitional ← <strong>Re 400</strong></td></tr>
+                <tr><td>&gt; 500</td><td>Turbulent wake</td></tr>
+            </tbody>
+            </table>
+            <p style="margin-top:0.7em; font-size:0.6em; color:var(--muted);">
+            Karman stability criterion: &nbsp;<span style="color:var(--accent3)">b/a = (1/π) arcsinh(1) ≈ 0.281</span> 
+            </p>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Methodology I</div>
+            <h2>Eulerian FDM — Chorin's Projection</h2>
+            <div class="card accent-l">
+            <h4>MAC Staggered Grid</h4>
+            <p style="font-size:0.5em;">
+                Scalar quantities (p, ρ) at cell centres; <em>u</em> on vertical faces, <em>v</em> on horizontal faces.<br>
+                Ghost layer: domain is (N<sub>x</sub>+2)×(N<sub>y</sub>+2).
+                Prevents pressure--velocity checkerboard instability.
+            </p>
+            </div>
+            <div class="card accent-l" style="margin-top:0.8em;">
+            <h4>Fractional Step (5 stages)</h4>
+            <ol style="font-size:0.6em; padding-left:1.2em; list-style:decimal;">
+                <li>Body forces (Euler ODE) </li>
+                <li>Viscous diffusion — implicit Gauss--Seidel </li>
+                <li>Pressure projection — SOR (ω=1.9, 40 iters) </li>
+                <li>Boundary conditions (Neumann or Dirichlet) </li>
+                <li>Semi-Lagrangian advection (unconditionally stable) </li>
+            </ol>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Methodology I</div>
+            <h2>FDM — Update Equations</h2>
+            <div class="card" style="font-size:0.62em;">
+            <h3>Diffusion update</h3>
+            <div class="formula" style="font-size:0.9em;">u<sup>n+1</sup><sub>i,j</sub> = (u<sup>n</sup><sub>i,j</sub> + a·Σ neighbours) / (1 + 4a)</div>
+            </div>
+            <div class="card" style="margin-top:0.7em; font-size:0.62em;">
+            <h3>Pressure correction</h3>
+            <div class="formula" style="font-size:0.9em;">p_corr = −div / s₀ &nbsp;·&nbsp; ω_SOR</div>
+            </div>
+            <div class="card" style="margin-top:0.7em; font-size:0.62em;">
+            <h3>Semi-Lagrangian advection</h3>
+            <div class="formula" style="font-size:0.9em;">u<sup>n+1</sup>(x) = u<sup>n</sup>(x − u<sup>n</sup>Δt)</div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Methodology II</div>
+            <h2>Lattice Boltzmann Method — D2Q9 BGK</h2>
+            <div class="card accent-r">
+            <h3>Kinetic Theory Basis</h3>
+            <p style="font-size:0.62em;">
+                Evolves discrete probability distributions f<sub>k</sub>(x,t).<br>
+                Macroscopic fields recovered as moments:
+            </p>
+            <div class="formula" style="font-size:0.85em;">ρ = Σ f<sub>k</sub> &nbsp;,&nbsp; ρu = Σ f<sub>k</sub> e<sub>k</sub></div>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Methodology II</div>
+            <div class="card accent-r" style="margin-top:0.8em;">
+            <h3>BGK Collision</h3>
+            <div class="formula" style="font-size:0.85em;">f<sub>k</sub>(x,t+1) = f<sub>k</sub> − (1/τ)(f<sub>k</sub> − f<sup>eq</sup><sub>k</sub>)</div>
+            <div class="formula" style="font-size:0.85em;">f<sup>eq</sup><sub>k</sub> = w<sub>k</sub>ρ[1 + 3(e·u) + 4.5(e·u)² − 1.5|u|²]</div>
+            <p style="font-size:0.6em; margin:0.4em 0 0;">
+                Chapman--Enskog: &nbsp;<span class="hl3">ν = (τ − 0.5)/3</span> <br>
+                Stability requires τ &gt; 0.5 
+            </p>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Methodology II</div>
+            <h2>LBM — Lattice & Boundary Conditions</h2>
+            <div class="card" style="font-size:0.5em;">
+            <h3>D2Q9 Lattice</h3>
+            <p>
+                9 velocity directions; c²<sub>s</sub> = 1/3 (lattice units) <br>
+                Weights: w₀=4/9, w₁₋₄=1/9, w₅₋₈=1/36 
+            </p>
+            </div>
+            <div class="card" style="margin-top:0.7em; font-size:0.5em;">
+            <h3>Boundary Conditions</h3>
+            <ul>
+                <li><strong>Solid obstacles:</strong> bounce-back (no-slip) </li>
+                <li><strong>Inlet:</strong> equilibrium at U<sub>in</sub>, ρ=1; velocity ramp over N<sub>ramp</sub>=500 steps </li>
+                <li><strong>Outlet:</strong> zero-gradient: f<sub>k</sub>(N-1) ← f<sub>k</sub>(N-2) </li>
+                <li><strong>Top/bottom:</strong> bounce-back (no-slip) or specular flip (free-slip) </li>
+            </ul>
+            </div>
+            <div class="card" style="margin-top:0.7em; font-size:0.5em;">
+            <h3>Key difference from FDM</h3>
+            <p>No global pressure solve. Collision & streaming are <span class="hl3">perfectly local and parallel</span>.</p>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Comparison</div>
+            <h2>FDM vs. LBM — Structural Differences</h2>
+            <table>
+            <thead>
+                <tr><th>Property</th><th>FDM (Chorin Projection)</th><th>LBM (D2Q9 BGK)</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Theoretical basis</td><td>Macroscopic NS equations</td><td>Mesoscopic kinetic theory </td></tr>
+                <tr><td>Primary variable</td><td>u, p</td><td>f<sub>k</sub> — 9 per cell </td></tr>
+                <tr><td>Grid</td><td>Staggered MAC</td><td>Collocated uniform </td></tr>
+                <tr><td>Pressure solve</td><td>Iterative Poisson (40 G-S iters)</td><td>EOS: p = ρc²<sub>s</sub> (local) </td></tr>
+            </tbody>
+            </table>
+        </section>
+        <section>
+            <div class="section-label">Comparison</div>
+            <h2>FDM vs. LBM — Structural Differences (cont.)</h2>
+            <table>
+            <thead>
+                <tr><th>Property</th><th>FDM (Chorin Projection)</th><th>LBM (D2Q9 BGK)</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Viscosity</td><td>Explicit diffusion term</td><td>Encoded in τ: ν = (τ−0.5)/3 </td></tr>
+                <tr><td>Integration</td><td>Fractional step, 5 sub-steps</td><td>Explicit: collide + stream </td></tr>
+                <tr><td>Parallelism</td><td>Limited (global pressure solve)</td><td><span class="hl3">Perfectly parallel</span> </td></tr>
+            </tbody>
+            </table>
+            <div style="margin-top:1em;" class="cols cols-2">
+            <div class="formula">Re<sub>FDM</sub> = U·D/ν = 2.0×0.2/0.001 = <span style="color:var(--accent)">400</span></div>
+            <div class="formula">Re<sub>LBM</sub> = U·D/ν<sub>lbm</sub> = 0.2×20/0.01 = <span style="color:var(--accent)">400</span></div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Software Architecture</div>
+            <h2>Zero-Dependency Implementation</h2>
+            <div class="card accent-l">
+            <h3>Native Engine</h3>
+            <p style="font-size:0.65em;">
+                The interactive web application is entirely self-developed. Both 2D simulations are written from scratch in TypeScript and run entirely in the browser via SvelteKit without reliance on third-party physics or CFD libraries.
+            </p>
+            <p style="font-size:0.65em; margin-top:0.5em;">
+                No native code, WebAssembly, or server-side computation is used. All field calculations and pixel manipulations are computed natively and painted directly to the HTML5 Canvas via the <code>ImageData</code> API.
+            </p>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Software Architecture</div>
+            <h2>Interactive Controls & Live Metrics</h2>
+            <div class="cols cols-2">
+            <div class="card accent-r">
+                <h3>Configuration Panels</h3>
+                <ul style="font-size:0.55em;">
+                    <li><strong>Global Config:</strong> Method selection (FDM/LBM), obstacle geometry, and wall boundary conditions.</li>
+                    <li><strong>Solver Parameters:</strong> Dynamic adjustments for FDM (iters, ω) and LBM (τ, ramp steps).</li>
+                    <li><strong>Visuals:</strong> Probe offsets, base/variable velocity colours, and diverging vorticity maps.</li>
+                </ul>
+            </div>
+            <div class="card accent-g">
+                <h3>Real-Time Metrics</h3>
+                <ul style="font-size:0.55em;">
+                    <li><strong>Compute Time:</strong> Frame-by-frame profiling (ms/frame).</li>
+                    <li><strong>Stability:</strong> Live CFL number for FDM and Max Mach number for LBM (highlighted if > 0.3).</li>
+                    <li><strong>Diagnostics:</strong> Strouhal number, MLUPS, and Karman b/a spacing ratio updated dynamically.</li>
+                </ul>
+            </div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Extension I</div>
+            <h2>Wake Diagnostics — Strouhal Number</h2>
+            <div class="card accent-l">
+            <h3>Strouhal Number Probe</h3>
+            <p style="font-size:0.62em;">
+                Probe at (x₁, y<sub>probe</sub>) = (cx + r·d₁, cy + 0.5r), offset above centreline.
+                Detects rising zero-crossings of v(t):
+            </p>
+            <div class="formula" style="font-size:0.85em;">v<sup>n-1</sup> ≤ 0 and v<sup>n</sup> > 0 ⟹ crossing at n </div>
+            <p style="font-size:0.62em;">Period T = rolling average of last 5 inter-crossing intervals.</p>
+            <div class="formula" style="font-size:0.85em;">St = D / (T · U) </div>
+            </div>
+            <div class="card accent-l" style="margin-top:0.8em;">
+            <h3>Expected St at Re = 400</h3>
+            <p style="font-size:0.62em;">Cylinder: <span class="hl">≈ 0.20--0.21</span> (Norberg 1994).<br>
+            Simulation converged to <span class="hl">St ≈ 0.12</span> for both methods — lower due to coarser grid &amp; 2D limitation.</p>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Extension I</div>
+            <h2>Wake Diagnostics — Karman Spacing</h2>
+            <div class="card accent-r">
+            <h3>Bearman Two-Probe Method</h3>
+            <p style="font-size:0.62em;">
+                Second probe at x₂ = cx + r·d₂. Time delay Δt = Δx/U<sub>c</sub> between crossings gives convection velocity.
+            </p>
+            <div class="formula" style="font-size:0.85em;">0.4U &lt; U<sub>c</sub> = Δx/Δt ≤ 1.1U </div>
+            <p style="font-size:0.62em; margin-top:0.4em;">Longitudinal spacing: <code>a = U<sub>c</sub>·T</code> <br>
+            Transverse spacing b from peak vorticity rows:</p>
+            <div class="formula" style="font-size:0.85em;">b = ⟨|y<sub>max</sub> − y<sub>min</sub>|⟩<sub>cycle</sub> · h </div>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Extension I</div>
+            <div class="card accent-r" style="margin-top:0.8em;">
+            <h3>Karman Spacing Ratio</h3>
+            <p style="font-size:0.62em;">
+                Displayed as b/a in real-time. Highlighted green when within 0.1 of theoretical stability criterion:
+            </p>
+            <div class="formula" style="font-size:0.85em; color:var(--accent3);">b/a = (1/π) arcsinh(1) ≈ 0.281 </div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Extension II</div>
+            <h2>Vorticity Visualisation Mode</h2>
+            <p style="font-size:0.68em;">
+            Added as an alternative to velocity-magnitude rendering. Computed via centred differences:
+            </p>
+            <div class="formula">ω<sub>i,j</sub> = (v<sub>i+1,j</sub> − v<sub>i-1,j</sub>)/(2h) − (u<sub>i,j+1</sub> − u<sub>i,j-1</sub>)/(2h)</div>
+            <p style="font-size:0.68em; margin-top:0.6em;">
+            Mapped to a <strong>diverging colourmap</strong>:
+            <span style="color:#4488ff;">■ Blue</span> = clockwise (ω &lt; 0) ·
+            <span style="color:#ffffff;">■ White</span> = zero ·
+            <span style="color:var(--accent2);">■ Red</span> = counter-clockwise (ω &gt; 0)
+            </p>
+        </section>
+        <section>
+            <div class="section-label">Extension II</div>
+            <h2>Vorticity Visualisation — Advantages</h2>
+            <p style="font-size:0.65em;"><strong>Advantages over speed-magnitude field:</strong></p>
+            <ul style="font-size:0.62em;">
+            <li>Suppresses uniform background flow → vortex cores are immediately visible </li>
+            <li>Directly identifies shedding asymmetry </li>
+            <li>Used to locate y<sub>max</sub>/y<sub>min</sub> vortex rows for b/a measurement </li>
+            <li>Obstacle offset (cy = 35 vs. N<sub>y</sub>/2 = 40) visible — ensures deterministic first shed </li>
+            </ul>
+            <div class="cols cols-2" style="margin-top:1em;">
+            <div class="img-ph" style="min-height:180px;">
+                <span class="ph-icon">🌀</span>
+                <span>FDM Vorticity</span>
+                <span style="font-size:0.85em;">Cylinder Re=400</span>
+            </div>
+            <div class="img-ph" style="min-height:180px;">
+                <span class="ph-icon">🌀</span>
+                <span>LBM Vorticity</span>
+            </div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Extension III</div>
+            <h2>3D LBM — D3Q19 (Python / NumPy)</h2>
+            <div class="card accent-g">
+            <h3>D3Q19 Lattice</h3>
+            <p style="font-size:0.62em;">
+                19 velocity directions; omits corner-connected D3Q27 directions for efficiency.
+            </p>
+            <div class="formula" style="font-size:0.85em;">w: 1/3 (rest) · 1/18 (face) · 1/36 (edge) </div>
+            <p style="font-size:0.62em;">Streaming via <code>np.roll</code> along (x,y,z) axes. Vectorised BGK collision over full Nx×Ny×Nz domain.</p>
+            </div>
+        </section>
+        <section>
+            <div class="card accent-g" style="margin-top:0.8em;">
+            <h3>Simulation Parameters</h3>
+            <table style="font-size:0.85em;">
+                <tbody>
+                <tr><td>Grid</td><td>300 x 100 x 30 </td></tr>
+                <tr><td>τ</td><td>0.5225 </td></tr>
+                <tr><td>U<sub>inlet</sub></td><td>0.1 lu/step </td></tr>
+                <tr><td>Re<sub>3D</sub></td><td>≈ 400 </td></tr>
+                <tr><td>Iterations</td><td>25 000 </td></tr>
+                </tbody>
+            </table>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Extension III</div>
+            <h2>3D D3Q19 — VTK / ParaView Workflow</h2>
+            <div class="card" style="font-size:0.6em;">
+            <h3>Boundary Conditions & Export</h3>
+            <ul>
+                <li>Implemented both Free-Slip (specular) and No-Slip (bounce-back) wall boundaries.</li>
+                <li>ASCII STRUCTURED_POINTS VTK files exported every 50 steps.</li>
+                <li>Load as time series in ParaView for streamlines and Q-criterion isosurfaces.</li>
+            </ul>
+            </div>
+            <div class="img-ph" style="min-height:200px; margin-top:0.8em;">
+            <span class="ph-icon">📦</span>
+            <span>ParaView / Tecplot 3D viz</span>
+            <span style="font-size:0.85em;">Re ≈ 400 · D3Q19</span>
+            <span style="font-size:0.8em; color:#3a5a70;">(screenshot pending)</span>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Results</div>
+            <h2>Seven Obstacle Geometries — Re = 400</h2>
+            <div class="cols cols-3" style="gap:0.7em;">
+            <div class="card" style="font-size:0.6em; padding:0.7em;">
+                <strong style="color:var(--accent);">Cylinder</strong>
+                <div class="img-ph" style="min-height:90px; margin:0.4em 0;">
+                <span class="ph-icon" style="font-size:1.2em;">⭕</span>
+                <span>Velocity / Vorticity</span>
+                </div>
+                <p style="margin:0;">St ≈ 0.12 (both methods) </p>
+            </div>
+            <div class="card" style="font-size:0.6em; padding:0.7em;">
+                <strong style="color:var(--accent);">Square</strong>
+                <div class="img-ph" style="min-height:90px; margin:0.4em 0;">
+                <span class="ph-icon" style="font-size:1.2em;">⬛</span>
+                <span>Velocity / Vorticity</span>
+                </div>
+                <p style="margin:0;">Fixed separation; wider wake </p>
+            </div>
+            <div class="card" style="font-size:0.6em; padding:0.7em;">
+                <strong style="color:var(--accent);">Diamond</strong>
+                <div class="img-ph" style="min-height:90px; margin:0.4em 0;">
+                <span class="ph-icon" style="font-size:1.2em;">🔷</span>
+                <span>Velocity / Vorticity</span>
+                </div>
+                <p style="margin:0;">Sharp leading edge; intermediate wake </p>
+            </div>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Results</div>
+            <h2>Seven Obstacle Geometries — Re = 400 (cont.)</h2>
+            <div class="cols cols-3" style="gap:0.7em;">
+            <div class="card" style="font-size:0.6em; padding:0.7em;">
+                <strong style="color:var(--accent);">Teardrop</strong>
+                <div class="img-ph" style="min-height:90px; margin:0.4em 0;">
+                <span class="ph-icon" style="font-size:1.2em;">💧</span>
+                <span>Velocity / Vorticity</span>
+                </div>
+                <p style="margin:0;">Most streamlined; St ≈ 0.16--0.20 </p>
+            </div>
+            <div class="card" style="font-size:0.6em; padding:0.7em;">
+                <strong style="color:var(--accent);">Wedge</strong>
+                <div class="img-ph" style="min-height:90px; margin:0.4em 0;">
+                <span class="ph-icon" style="font-size:1.2em;">🔺</span>
+                <span>Velocity / Vorticity</span>
+                </div>
+                <p style="margin:0;">Apex upstream; sharp stagnation </p>
+            </div>
+            <div class="card" style="font-size:0.6em; padding:0.7em;">
+                <strong style="color:var(--accent);">Inclined Plate</strong>
+                <div class="img-ph" style="min-height:90px; margin:0.4em 0;">
+                <span class="ph-icon" style="font-size:1.2em;">➖</span>
+                <span>Velocity / Vorticity</span>
+                </div>
+                <p style="margin:0;">45° — most asymmetric; b/a deviates most </p>
+            </div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Results · Cylinder Baseline</div>
+            <h2>Flow Past Circular Cylinder at Re = 400</h2>
+            <p style="font-size:0.6em; margin-bottom:0.5em;"><span class="badge blue">FDM</span> Velocity Field</p>
+            <div class="img-ph" style="min-height:160px;">
+            <span class="ph-icon">🌊</span><span>FDM velocity magnitude</span>
+            </div>
+            <p style="font-size:0.6em; margin:0.8em 0 0.5em;"><span class="badge blue">FDM</span> Vorticity Field</p>
+            <div class="img-ph" style="min-height:160px;">
+            <span class="ph-icon">🌀</span><span>FDM vorticity (blue--red)</span>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Results · Cylinder Baseline</div>
+            <h2>Flow Past Circular Cylinder at Re = 400</h2>
+            <p style="font-size:0.6em; margin-bottom:0.5em;"><span class="badge red">LBM</span> Velocity Field</p>
+            <div class="img-ph" style="min-height:160px;">
+            <span class="ph-icon">🌊</span><span>LBM velocity magnitude</span>
+            </div>
+            <p style="font-size:0.6em; margin:0.8em 0 0.5em;"><span class="badge red">LBM</span> Vorticity Field</p>
+            <div class="img-ph" style="min-height:160px;">
+            <span class="ph-icon">🌀</span><span>LBM vorticity (blue--red)</span>
+            </div>
+            <p style="font-size:0.58em; color:var(--muted); margin-top:0.5em;">
+            Both methods exhibit von Karman vortex street. Strouhal converges to St ≈ 0.12 after startup transients.
+            </p>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Results · Performance</div>
+            <h2>Computational Performance</h2>
+            <div class="metric-row" style="margin-bottom:1em;">
+            <div class="metric-box">
+                <div class="val" style="color:var(--accent);">~11 ms</div>
+                <div class="lbl">FDM / step </div>
+            </div>
+            <div class="metric-box">
+                <div class="val" style="color:var(--accent2);">~2 ms</div>
+                <div class="lbl">LBM 2D / step </div>
+            </div>
+            <div class="metric-box">
+                <div class="val" style="color:var(--accent3);">~1000 ms</div>
+                <div class="lbl">LBM 3D Python / step </div>
+            </div>
+            </div>
+            <table>
+            <thead><tr><th>Method</th><th>Steps/frame</th><th>Dominant cost</th><th>GPU potential</th></tr></thead>
+            <tbody style="font-size: 0.8em;">
+                <tr>
+                <td><span class="badge blue">FDM</span></td>
+                <td>1</td>
+                <td>40-iter Gauss--Seidel pressure solve (global coupling) </td>
+                <td>Limited — global solve</td>
+                </tr>
+                <tr>
+                <td><span class="badge red">LBM 2D</span></td>
+                <td>15 </td>
+                <td>9-direction collision + streaming loops </td>
+                <td><span class="hl3">Excellent — perfectly local</span></td>
+                </tr>
+                <tr>
+                <td><span class="badge green">LBM 3D</span></td>
+                <td>1 </td>
+                <td>19-dir loop + NumPy overhead (300x100x30) </td>
+                <td><span class="hl3">Excellent — CUDA/Taichi</span> </td>
+                </tr>
+            </tbody>
+            </table>
+            <p style="font-size:0.5em; margin-top:0.8em;">
+            LBM runs 15 steps/frame vs. FDM's 1, yet remains faster per physical time unit due to the absence of a global pressure solve.
+            GPU (WebGPU/CUDA) could deliver <span class="hl">10--100× speedup</span> for 3D LBM.
+            </p>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Discussion</div>
+            <h2>Comparison of Methods</h2>
+            <div class="card accent-l">
+            <h3>Where methods agree</h3>
+            <ul style="font-size:0.62em;">
+                <li>Both reproduce von Karman vortex street for all 7 shapes </li>
+                <li>Same qualitative wake structure at matched Re = 400 </li>
+                <li>Consistent Strouhal numbers (St ≈ 0.12 for cylinder) </li>
+            </ul>
+            </div>
+            <div class="card accent-r" style="margin-top:0.8em;">
+            <h3>Sources of discrepancy</h3>
+            <ul style="font-size:0.62em;">
+                <li><strong>LBM compressibility error:</strong> Recovers incompressible NS only up to O(Ma<sup>2</sup>). With Ma ≈ 0.35, small density fluctuations bias St upwards.</li>
+                <li><strong>FDM numerical dissipation:</strong> Semi-Lagrangian advection smooths gradients. LBM's streaming step is exact.</li>
+                <li><strong>Karman b/a convergence:</strong> Finite domain truncates street before asymptotic 0.281.</li>
+                <li><strong>LBM startup:</strong> Inlet ramp (500 steps) gives a smoother startup. FDM steps full U immediately.</li>
+            </ul>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Discussion</div>
+            <h2>3D Results at Re ≈ 400</h2>
+            <div class="card accent-g">
+            <h3>3D at Re ≈ 400</h3>
+            <p style="font-size:0.62em; margin:0;">
+                At Re = 400, a circular cylinder is within the transitional regime where three-dimensional instabilities are known to develop. The 3D D3Q19 solver captures this physical spanwise deformation that is structurally missed by 2D simulations assuming infinite spanwise coherence.
+            </p>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Future Work</div>
+            <h2>Extensions & Open Directions</h2>
+            <div class="cols cols-2" style="gap:0.8em;">
+            <div class="card accent-l" style="font-size:0.62em;">
+                <h3>Near-term</h3>
+                <ul>
+                <li>St--Re sweep (Re = 50→400) per shape vs. literature </li>
+                <li>Larger domain (N<sub>x</sub>=400) for b/a convergence </li>
+                <li>WebGPU acceleration in browser </li>
+                <li>Spanwise resolution study to check structural convergence </li>
+                </ul>
+            </div>
+            <div class="card accent-r" style="font-size:0.62em;">
+                <h3>Methods</h3>
+                <ul>
+                <li><strong>SPH</strong> — mesh-free Lagrangian; no advection diffusion; good for free-surface flows </li>
+                <li><strong>MRT-LBM</strong> — multi-relaxation-time for better high-Re stability</li>
+                <li><strong>LES</strong> in LBM — extend to turbulent regime (Re &gt; 500) </li>
+                </ul>
+            </div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">Conclusion</div>
+            <h2>Summary</h2>
+            <ul style="font-size:0.68em;">
+            <li>Implemented <span class="hl">FDM (Chorin, MAC)</span> and <span class="hl2">LBM (D2Q9 BGK)</span> in TypeScript, running live in SvelteKit </li>
+            <li>Extended to <span class="hl3">3D D3Q19</span> in Python with VTK/ParaView workflow </li>
+            <li>Quantitative wake diagnostics: <strong>Strouhal number</strong>, <strong>Bearman two-probe Uc</strong>, <strong>Karman b/a</strong> </li>
+            <li>Vorticity rendering added as cleaner diagnostic </li>
+            <li>Both methods validated across <strong>7 obstacle geometries</strong> at Re = 400 </li>
+            </ul>
+            <div class="card accent-g" style="margin-top:1em; font-size:0.65em;">
+            <p style="margin:0;">
+                LBM's key structural advantage: no global pressure solve → <strong>perfectly parallel</strong> collision-streaming → natural candidate for GPU acceleration at scale.
+            </p>
+            </div>
+        </section>
+        <section>
+            <div class="section-label">Conclusion</div>
+            <h2>Key Metrics</h2>
+            <div class="cols cols-2" style="gap:0.8em; margin-top:0.5em;">
+                <div class="metric-box" style="margin-bottom:0.7em; width:80%;">
+                    <div class="val" style="font-size:1.1em;">Re = 400</div>
+                    <div class="lbl">matched across both 2D solvers </div>
+                </div>
+                <div class="metric-box" style="margin-bottom:0.7em; width:80%;">
+                    <div class="val" style="font-size:1.1em;">St ≈ 0.12</div>
+                    <div class="lbl">cylinder · both methods agree </div>
+                </div>
+                <div class="metric-box" style="margin-bottom:0.7em; width:80%;">
+                    <div class="val" style="font-size:1.1em;">b/a → 0.281</div>
+                    <div class="lbl">Karman stability criterion </div>
+                </div>
+                <div class="metric-box" style="width:80%;">
+                    <div class="val" style="font-size:1.1em;">7 shapes</div>
+                    <div class="lbl">cylinder · square · diamond · teardrop · wedge · plate · star </div>
+                </div>
+            </div>
+        </section>
+        </section>
+
+        <section>
+        <section>
+            <div class="section-label">References</div>
+            <h2>Key References</h2>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size:0.48em; color:var(--text); line-height:2; column-count:2; column-gap:2em;">
+            <p>[1] Bhatnagar, Gross, Krook (1954) — BGK collision model. <em>Phys. Rev.</em> 94(3).</p>
+            <p>[2] Bearman (1967) — Two-probe convection velocity. <em>J. Fluid Mech.</em> 28(4).</p>
+            <p>[3] Chorin (1968) — Projection method. <em>Math. Comp.</em> 22(104).</p>
+            <p>[4] Harlow & Welch (1965) — MAC grid. <em>Phys. Fluids</em> 8(12).</p>
+            <p>[5] Krüger et al. (2017) — <em>The Lattice Boltzmann Method.</em> Springer.</p>
+            <p>[6] Müller (2022) — Eulerian fluid simulator tutorial. Ten Minute Physics.</p>
+            <p>[7] Norberg (1994) — Experimental cylinder flow. <em>J. Fluid Mech.</em> 258.</p>
+            <p>[8] Qian, d'Humières, Lallemand (1992) — D2Q9 BGK. <em>EPL</em> 17(6).</p>
+            <p>[9] Stam (1999) — Stable fluids. <em>SIGGRAPH Proc.</em></p>
+            <p>[10] Succi (2001) — <em>The LBM Equation.</em> OUP.</p>
+            <p>[11] Williamson (1996) — Cylinder wake vortex dynamics. <em>Annu. Rev. Fluid Mech.</em> 28.</p>
+            </div>
+        </section>
+        </section>
+    </div>
+    </div>
+
+		<script src="dist/reveal.js"></script>
+		<script src="dist/plugin/notes.js"></script>
+		<script src="dist/plugin/markdown.js"></script>
+		<script src="dist/plugin/highlight.js"></script>
+		<script>
+			// More info about initialization & config:
+			// - https://revealjs.com/initialization/
+			// - https://revealjs.com/config/
+			Reveal.initialize({
+				hash: true,
+				transition: 'fade',
+				transitionSpeed: 'fast',
+				backgroundTransition: 'fade',
+				controls: true,
+				progress: true,
+				slideNumber: 'c/t',
+				overview: true,
+				width: 1280,
+				height: 720,
+				margin: 0.06,
+				minScale: 0.2,
+				maxScale: 2.0,
+
+				// Learn about plugins: https://revealjs.com/plugins/
+				plugins: [RevealMarkdown, RevealHighlight, RevealNotes],
+			});
+		</script>
+	</body>
+</html>
