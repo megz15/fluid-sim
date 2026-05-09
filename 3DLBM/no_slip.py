@@ -14,7 +14,6 @@ class FluidLBM:
         self.nx = nx
         self.ny = ny
         self.nz = nz
-        self.N = nx * ny * nz
         self.tau = tau
         self.omega = 1.0 / tau
         
@@ -26,13 +25,17 @@ class FluidLBM:
         self.w_vel = np.zeros((nx, ny, nz))
         self.solid_mask = np.ones((nx, ny, nz), dtype=int) 
 
-def initLBM(nx, ny, nz, tau):
+def initLBM(nx, ny, nz, tau, u_inlet):
     lbm = FluidLBM(nx, ny, nz, tau)
+    # Initialize entire domain with freestream velocity
+    u_sq = u_inlet**2
     for k in range(19):
-        lbm.f[k, :, :, :] = w[k]
+        cu = cx[k] * u_inlet
+        f_eq = w[k] * 1.0 * (1.0 + 3.0*cu + 4.5*cu**2 - 1.5*u_sq)
+        lbm.f[k, :, :, :] = f_eq
     return lbm
 
-def step(lbm, inletVelocity, bc="no-slip"):
+def step(lbm, inletVelocity):
     # Collision & Macroscopic Update
     lbm.rho = np.sum(lbm.f, axis=0)
     lbm.u = np.sum(lbm.f * cx[:, None, None, None], axis=0) / lbm.rho
@@ -68,13 +71,10 @@ def step(lbm, inletVelocity, bc="no-slip"):
     for k in range(19):
         lbm.f[k] = np.roll(lbm.f_new[k], shift=(cx[k], cy[k], cz[k]), axis=(0, 1, 2))
 
-    # Domain Boundary Conditions
-    if bc == "no-slip":
-        for k in range(19):
-            if cy[k] > 0: lbm.f[k, :, 0, :] = lbm.f_new[opposite[k], :, 0, :]
-            if cy[k] < 0: lbm.f[k, :, -1, :] = lbm.f_new[opposite[k], :, -1, :]
-            if cz[k] > 0: lbm.f[k, :, :, 0] = lbm.f_new[opposite[k], :, :, 0]
-            if cz[k] < 0: lbm.f[k, :, :, -1] = lbm.f_new[opposite[k], :, :, -1]
+    # Domain Boundary Conditions (No-Slip on Y-axis only, Z-axis is periodic)
+    for k in range(19):
+        if cy[k] > 0: lbm.f[k, :, 0, :] = lbm.f_new[opposite[k], :, 0, :]
+        if cy[k] < 0: lbm.f[k, :, -1, :] = lbm.f_new[opposite[k], :, -1, :]
 
     # Zero-gradient convective outlet
     lbm.f[:, -1, :, :] = lbm.f[:, -2, :, :]
@@ -99,20 +99,18 @@ def exportToVTK(domain, step_num, out_dir="vtk_output"):
         np.savetxt(f_out, vel, fmt='%.5f')
 
 if __name__ == "__main__":
-    # Global Config
-    nx, ny, nz = 200, 60, 20
-    lbm_tau = 0.515
-    lbm_inlet_velocity = 0.04
-    niters = 40000
-    save_freq = 50
-    wall_BC = "no-slip"
+    nx, ny, nz = 300, 100, 30
+    lbm_tau = 0.5225 
+    lbm_inlet_velocity = 0.1
+    niters = 25000
+    save_freq = 100
     
-    # Obstruction
-    obstacle_size = 6
-    cx_pos, cy_pos = 40, 32
+    obstacle_size = 15
+    cx_pos, cy_pos = 60, 50.1 
     
     print(f"Initializing {nx}x{ny}x{nz} domain...")
-    lbm_domain = initLBM(nx, ny, nz, lbm_tau)
+    # Passing the inlet velocity here initializes the entire domain at U=0.1
+    lbm_domain = initLBM(nx, ny, nz, lbm_tau, lbm_inlet_velocity)
     
     x, y, z = np.meshgrid(np.arange(nx), np.arange(ny), np.arange(nz), indexing='ij')
     cylinder_mask = (x - cx_pos)**2 + (y - cy_pos)**2 <= obstacle_size**2
@@ -121,7 +119,8 @@ if __name__ == "__main__":
     print("Starting simulation... (Press Ctrl+C to abort)")
     try:
         for current_frame in range(niters):
-            step(lbm_domain, lbm_inlet_velocity, bc=wall_BC)
+            # Constant velocity applied directly, no ramp factor
+            step(lbm_domain, lbm_inlet_velocity)
             
             if current_frame % save_freq == 0:
                 max_speed = np.max(np.sqrt(lbm_domain.u**2 + lbm_domain.v**2 + lbm_domain.w_vel**2))
@@ -132,4 +131,4 @@ if __name__ == "__main__":
         print("\nSimulation interrupted by user. Saving final frame...")
         exportToVTK(lbm_domain, current_frame)
         
-    print("Done. You can now load the vtk_output folder in ParaView or Tecplot 360")
+    print("Done. You can now load the vtk_output folder in ParaView.")
